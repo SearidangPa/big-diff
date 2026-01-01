@@ -440,14 +440,17 @@ MiniDiff.config = {
 
   -- Various options
   options = {
-    -- Diff algorithm. See `:h vim.diff()`.
+    -- Diff algorithm. See `:h vim.text.diff()`.
     algorithm = 'histogram',
 
-    -- Whether to use "indent heuristic". See `:h vim.diff()`.
+    -- Whether to use "indent heuristic". See `:h vim.text.diff()`.
     indent_heuristic = true,
 
     -- The amount of second-stage diff to align lines
     linematch = 60,
+
+    -- Whether to ignore all whitespace differences
+    ignore_whitespace = false,
 
     -- Whether to wrap around edges during hunk navigation
     wrap_goto = false,
@@ -1291,9 +1294,10 @@ H.update_buf_diff = vim.schedule_wrap(function(buf_id)
   H.vimdiff_opts.algorithm = options.algorithm
   H.vimdiff_opts.indent_heuristic = options.indent_heuristic
   H.vimdiff_opts.linematch = options.linematch
+  H.vimdiff_opts.ignore_whitespace = options.ignore_whitespace
 
   local buf_text, buf_lines = H.get_buftext(buf_id)
-  local diff = vim.diff(buf_cache.ref_text, buf_text, H.vimdiff_opts)
+  local diff = vim.text.diff(buf_cache.ref_text, buf_text, H.vimdiff_opts)
 
   -- Recompute hunks with summary and draw information
   H.update_hunk_data(diff, buf_cache, buf_lines)
