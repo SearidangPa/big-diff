@@ -110,7 +110,7 @@ MiniDiff.enable = function(buf_id)
     new_cache.summary = new_cache.summary or {}
     new_cache.viz_lines = new_cache.viz_lines or {}
 
-    new_cache.overlay = false
+    new_cache.overlay = H.state.overlay
     new_cache.overlay_lines = new_cache.overlay_lines or {}
 
     H.state.cache[b_id] = new_cache
@@ -186,14 +186,16 @@ MiniDiff.toggle = function(buf_id)
   return MiniDiff.enable(buf_id)
 end
 
-MiniDiff.toggle_overlay = function(buf_id)
-  buf_id = H.val.validate_buf_id(buf_id)
-  local buf_cache = H.state.cache[buf_id]
-  if buf_cache == nil then H.log.error(string.format('Buffer %d is not enabled.', buf_id)) end
+MiniDiff.toggle_overlay = function()
+  H.state.overlay = not H.state.overlay
 
-  buf_cache.overlay = not buf_cache.overlay
-  H.viz.clear_all_diff(buf_id)
-  MiniDiff.schedule_diff_update(buf_id, 0)
+  for buf_id, buf_cache in pairs(H.state.cache) do
+    if vim.api.nvim_buf_is_valid(buf_id) then
+      buf_cache.overlay = H.state.overlay
+      H.viz.clear_all_diff(buf_id)
+      MiniDiff.schedule_diff_update(buf_id, 0)
+    end
+  end
 end
 
 MiniDiff.export = H.hunk.export

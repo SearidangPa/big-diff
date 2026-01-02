@@ -21,6 +21,9 @@ M.git_cache = {}
 -- Cache for operator
 M.operator_cache = {}
 
+-- Global overlay state
+M.overlay = false
+
 -- Treesitter syntax highlighting for overlay
 M.ts_cache = {}
 M.blended_hl_cache = {}
