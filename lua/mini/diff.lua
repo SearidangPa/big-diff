@@ -1062,9 +1062,9 @@ H.create_default_hl = function()
   hi('MiniDiffSignAdd', { link = has_core_diff_hl and 'Added' or 'diffAdded' })
   hi('MiniDiffSignChange', { link = has_core_diff_hl and 'Changed' or 'diffChanged' })
   hi('MiniDiffSignDelete', { link = has_core_diff_hl and 'Removed' or 'diffRemoved' })
-  hi('MiniDiffOverAdd', { fg = '#a6e3a1', bg = '#001A00' })       -- Green for additions
-  hi('MiniDiffOverChange', { fg = '#f38ba8', bg = '#3a1a1a' })    -- Red for reference (old) text
-  hi('MiniDiffOverChangeBuf', { fg = '#a6e3a1', bg = '#001A00' }) -- Green for buffer (new) text
+  hi('MiniDiffOverAdd', { fg = '#AED28C' })                    -- Green for additions
+  hi('MiniDiffOverChange', { fg = '#f38ba8', bg = '#3a1a1a' }) -- Red for reference (old) text
+  hi('MiniDiffOverChangeBuf', { fg = '#AED28C' })              -- Green for buffer (new) text
   hi('MiniDiffOverContext', { link = 'DiffChange' })
   hi('MiniDiffOverContextBuf', {})
   hi('MiniDiffOverDelete', { fg = '#f38ba8', bg = '#3a1a1a' }) -- Red for deletions
