@@ -509,6 +509,7 @@ MiniDiff.disable = function(buf_id)
   local buf_cache = H.cache[buf_id]
   if buf_cache == nil then return end
   H.cache[buf_id] = nil
+  H.ts_cache[buf_id] = nil
 
   pcall(vim.api.nvim_del_augroup_by_id, buf_cache.augroup)
   vim.b[buf_id].minidiff_summary, vim.b[buf_id].minidiff_summary_string = nil, nil
@@ -611,6 +612,17 @@ MiniDiff.set_ref_text = function(buf_id, text)
   if text == nil then
     H.clear_all_diff(buf_id)
     vim.cmd('redraw')
+  end
+
+  -- Invalidate and eagerly rebuild treesitter cache
+  -- (Must be done here, not in decoration provider due to E565)
+  H.ts_cache[buf_id] = nil
+  if text ~= nil then
+    local lang = vim.bo[buf_id].filetype
+    if lang ~= '' then
+      local resolved_lang = vim.treesitter.language.get_lang(lang) or lang
+      H.ts_cache[buf_id] = H.parse_ref_text_ts(buf_id, text, resolved_lang)
+    end
   end
 
   -- Immediately update diff
@@ -1048,7 +1060,10 @@ H.create_autocommands = function()
   -- disabling buffer, as it calls `on_detach()` from buffer watcher
   au('BufEnter', '*', H.auto_enable, 'Enable diff')
   au('VimResized', '*', H.on_resize, 'Track Neovim resizing')
-  au('ColorScheme', '*', H.create_default_hl, 'Ensure colors')
+  au('ColorScheme', '*', function()
+    H.create_default_hl()
+    H.clear_blended_hl_cache()
+  end, 'Ensure colors')
 end
 
 --stylua: ignore
@@ -1400,31 +1415,37 @@ H.append_overlay_change = function(overlay_lines, hunk, ref_lines, buf_lines, pr
       local ref_n, buf_n = hunk.ref_start + i, hunk.buf_start + i
       -- Defer actually computing word diff until in decoration provider as it
       -- will compute only for displayed lines
-      local data =
-      { type = 'change_worddiff', ref_line = ref_lines[ref_n], buf_line = buf_lines[buf_n], priority = priority }
+      local data = {
+        type = 'change_worddiff',
+        ref_line = ref_lines[ref_n],
+        buf_line = buf_lines[buf_n],
+        ref_line_num = ref_n,
+        priority = priority,
+      }
       H.append_overlay(overlay_lines, buf_n, data)
     end
     return
   end
 
   -- If not one-to-one change, show reference lines above first real one
+  -- Store line data for deferred treesitter processing
   local changed_lines = {}
   for i = hunk.ref_start, hunk.ref_start + hunk.ref_count - 1 do
-    local l = { { ref_lines[i] .. H.overlay_suffix, 'MiniDiffOverChange' } }
-    table.insert(changed_lines, l)
+    table.insert(changed_lines, { ref_line = ref_lines[i], ref_line_num = i, diff_type = 'Change' })
   end
   local to = hunk.buf_start + hunk.buf_count - 1
-  local data = { type = 'change', to = to, lines = changed_lines, show_above = true, priority = priority }
+  local data = { type = 'change', to = to, lines = changed_lines, show_above = true, priority = priority, needs_ts = true }
   H.append_overlay(overlay_lines, hunk.buf_start, data)
 end
 
 H.append_overlay_delete = function(overlay_lines, hunk, ref_lines, priority)
   local deleted_lines = {}
   for i = hunk.ref_start, hunk.ref_start + hunk.ref_count - 1 do
-    table.insert(deleted_lines, { { ref_lines[i], 'MiniDiffOverDelete' }, { H.overlay_suffix, 'MiniDiffOverDelete' } })
+    -- Store line data for deferred treesitter processing
+    table.insert(deleted_lines, { ref_line = ref_lines[i], ref_line_num = i, diff_type = 'Delete' })
   end
   local l_num, show_above = math.max(hunk.buf_start, 1), hunk.buf_start == 0
-  local data = { type = 'delete', lines = deleted_lines, show_above = show_above, priority = priority }
+  local data = { type = 'delete', lines = deleted_lines, show_above = show_above, priority = priority, needs_ts = true }
   H.append_overlay(overlay_lines, l_num, data)
 end
 
@@ -1440,25 +1461,31 @@ H.draw_overlay_line = function(buf_id, ns_id, row, data)
     opts.hl_group = data.type == 'add' and 'MiniDiffOverAdd' or 'MiniDiffOverContextBuf'
   end
 
+  -- Process lines with treesitter highlighting if needed
+  local virt_lines = data.lines
+  if data.needs_ts and data.lines then
+    virt_lines = {}
+    for _, line_data in ipairs(data.lines) do
+      local chunks = H.build_ts_virt_line(buf_id, line_data.ref_line, line_data.ref_line_num, line_data.diff_type)
+      -- Add suffix
+      table.insert(chunks, { H.overlay_suffix, 'MiniDiffOver' .. line_data.diff_type })
+      table.insert(virt_lines, chunks)
+    end
+  end
+
   -- "Change"/"Delete" hunks show affected reference range as virtual lines
   opts.virt_lines, opts.virt_lines_above, opts.virt_lines_overflow =
-      data.lines, data.show_above, H.extmark_virt_lines_overflow
+      virt_lines, data.show_above, H.extmark_virt_lines_overflow
   H.set_extmark(buf_id, ns_id, row, 0, opts)
 end
 
 H.draw_overlay_line_worddiff = function(buf_id, ns_id, row, data)
   local ref_line, buf_line, priority = data.ref_line, data.buf_line, data.priority
+  local ref_line_num = data.ref_line_num
   local ref_parts, buf_parts = H.compute_worddiff_changed_parts(ref_line, buf_line)
 
-  -- Show changes in reference as two-colored virtual line above
-  local virt_line, index = {}, 1
-  for i = 1, #ref_parts do
-    local part = ref_parts[i]
-    if index < part[1] then table.insert(virt_line, { ref_line:sub(index, part[1] - 1), 'MiniDiffOverContext' }) end
-    table.insert(virt_line, { ref_line:sub(part[1], part[2]), 'MiniDiffOverChange' })
-    index = part[2] + 1
-  end
-  if index <= ref_line:len() then table.insert(virt_line, { ref_line:sub(index), 'MiniDiffOverContext' }) end
+  -- Show changes in reference as virtual line with treesitter + worddiff highlighting
+  local virt_line = H.build_worddiff_virt_line_with_ts(buf_id, ref_line, ref_parts, ref_line_num)
   table.insert(virt_line, { H.overlay_suffix, 'MiniDiffOverContext' })
 
   --stylua: ignore
@@ -1919,6 +1946,219 @@ H.redraw_buffer = function(buf_id)
 end
 if vim.api.nvim__redraw ~= nil then
   H.redraw_buffer = function(buf_id) vim.api.nvim__redraw({ buf = buf_id, valid = true, statusline = true }) end
+end
+
+-- Treesitter syntax highlighting for overlay --------------------------------
+H.ts_cache = {}
+H.blended_hl_cache = {}
+
+-- Parse reference text with treesitter and extract highlights per line
+H.parse_ref_text_ts = function(buf_id, ref_text, lang)
+  local ok, parser = pcall(vim.treesitter.get_string_parser, ref_text, lang)
+  if not ok or parser == nil then return nil end
+
+  local trees = parser:parse()
+  if #trees == 0 then return nil end
+
+  local query_ok, query = pcall(vim.treesitter.query.get, lang, 'highlights')
+  if not query_ok or query == nil then return nil end
+
+  local lines = vim.split(ref_text, '\n')
+  local line_highlights = {}
+  for i = 1, #lines do
+    line_highlights[i] = {}
+  end
+
+  -- Iterate through all captures
+  for id, node, _ in query:iter_captures(trees[1]:root(), ref_text) do
+    local name = query.captures[id]
+    local hl_group = '@' .. name
+    local start_row, start_col, end_row, end_col = node:range()
+
+    -- Handle single-line and multi-line captures
+    if start_row == end_row then
+      if line_highlights[start_row + 1] then
+        table.insert(line_highlights[start_row + 1], {
+          start_col = start_col,
+          end_col = end_col,
+          hl_group = hl_group,
+        })
+      end
+    else
+      for row = start_row, end_row do
+        if line_highlights[row + 1] then
+          local s = (row == start_row) and start_col or 0
+          local e = (row == end_row) and end_col or #(lines[row + 1] or '')
+          table.insert(line_highlights[row + 1], {
+            start_col = s,
+            end_col = e,
+            hl_group = hl_group,
+          })
+        end
+      end
+    end
+  end
+
+  return { ref_text = ref_text, line_highlights = line_highlights }
+end
+
+-- Get treesitter highlights for a single reference line (from eager cache)
+H.get_ts_highlights_for_line = function(buf_id, line_num_in_ref)
+  local ts_data = H.ts_cache[buf_id]
+  if ts_data == nil then return nil end
+  return ts_data.line_highlights[line_num_in_ref]
+end
+
+-- Get or create a blended highlight group (syntax fg + diff bg)
+H.get_blended_hl = function(syntax_hl, diff_type)
+  local key = diff_type .. ':' .. syntax_hl
+  if H.blended_hl_cache[key] then return H.blended_hl_cache[key] end
+
+  local name = 'MiniDiffOverTS' .. diff_type .. syntax_hl:gsub('[^%w]', '')
+
+  -- Get syntax highlight definition
+  local syntax_def = vim.api.nvim_get_hl(0, { name = syntax_hl, link = false })
+  if vim.tbl_isempty(syntax_def) then
+    H.blended_hl_cache[key] = 'MiniDiffOver' .. diff_type
+    return H.blended_hl_cache[key]
+  end
+
+  -- Get diff highlight definition
+  local diff_hl = 'MiniDiffOver' .. diff_type
+  local diff_def = vim.api.nvim_get_hl(0, { name = diff_hl, link = false })
+
+  -- Create blended highlight: syntax fg + diff bg
+  vim.api.nvim_set_hl(0, name, {
+    fg = syntax_def.fg,
+    bg = diff_def.bg,
+    sp = syntax_def.sp,
+    bold = syntax_def.bold,
+    italic = syntax_def.italic,
+    underline = syntax_def.underline,
+    undercurl = syntax_def.undercurl,
+    strikethrough = syntax_def.strikethrough,
+  })
+
+  H.blended_hl_cache[key] = name
+  return name
+end
+
+-- Clear blended highlight cache (called on ColorScheme change)
+H.clear_blended_hl_cache = function() H.blended_hl_cache = {} end
+
+-- Find treesitter highlight at a specific byte position
+H.find_ts_hl_at_pos = function(ts_highlights, byte_pos)
+  if ts_highlights == nil then return nil end
+  for _, hl in ipairs(ts_highlights) do
+    if byte_pos >= hl.start_col and byte_pos < hl.end_col then
+      return hl.hl_group
+    end
+  end
+  return nil
+end
+
+-- Build a virtual line with treesitter syntax highlighting
+H.build_ts_virt_line = function(buf_id, line_text, ref_line_num, diff_type)
+  local ts_highlights = H.get_ts_highlights_for_line(buf_id, ref_line_num)
+  local default_hl = 'MiniDiffOver' .. diff_type
+
+  if not ts_highlights or #ts_highlights == 0 then
+    return { { line_text, default_hl } }
+  end
+
+  -- Build chunks by finding highlight at each position
+  local chunks = {}
+  local i = 1
+  while i <= #line_text do
+    local hl_group = H.find_ts_hl_at_pos(ts_highlights, i - 1)
+    local blend_hl = hl_group and H.get_blended_hl(hl_group, diff_type) or default_hl
+
+    -- Find extent of this highlight
+    local j = i + 1
+    while j <= #line_text do
+      if H.find_ts_hl_at_pos(ts_highlights, j - 1) ~= hl_group then break end
+      j = j + 1
+    end
+
+    table.insert(chunks, { line_text:sub(i, j - 1), blend_hl })
+    i = j
+  end
+
+  return #chunks > 0 and chunks or { { line_text, default_hl } }
+end
+
+-- Build worddiff virtual line with treesitter highlighting
+H.build_worddiff_virt_line_with_ts = function(buf_id, line, changed_parts, ref_line_num)
+  local ts_highlights = H.get_ts_highlights_for_line(buf_id, ref_line_num)
+
+  -- Mark each byte position with its diff type ('Change' or 'Context')
+  local len = #line
+  local diff_types = {}
+  for i = 1, len do
+    diff_types[i] = 'Context'
+  end
+
+  for _, part in ipairs(changed_parts) do
+    for i = part[1], part[2] do
+      if i <= len then diff_types[i] = 'Change' end
+    end
+  end
+
+  -- If no treesitter highlights, build simple chunks
+  if ts_highlights == nil or #ts_highlights == 0 then
+    return H.build_worddiff_virt_line_simple(line, changed_parts)
+  end
+
+  -- Sort ts_highlights by position
+  table.sort(ts_highlights, function(a, b) return a.start_col < b.start_col end)
+
+  -- Build chunks by iterating through the line
+  local chunks = {}
+  local pos = 1
+
+  while pos <= len do
+    local current_diff = diff_types[pos]
+    local current_ts = H.find_ts_hl_at_pos(ts_highlights, pos - 1)
+    local segment_end = pos
+
+    -- Find extent of current segment (same diff_type and syntax hl)
+    while segment_end < len do
+      local next_diff = diff_types[segment_end + 1]
+      local next_ts = H.find_ts_hl_at_pos(ts_highlights, segment_end)
+      if next_diff ~= current_diff or next_ts ~= current_ts then break end
+      segment_end = segment_end + 1
+    end
+
+    local text = line:sub(pos, segment_end)
+    local hl_group
+    if current_ts then
+      hl_group = H.get_blended_hl(current_ts, current_diff)
+    else
+      hl_group = 'MiniDiffOver' .. current_diff
+    end
+
+    table.insert(chunks, { text, hl_group })
+    pos = segment_end + 1
+  end
+
+  return chunks
+end
+
+-- Simple worddiff virtual line (fallback without treesitter)
+H.build_worddiff_virt_line_simple = function(line, changed_parts)
+  local virt_line, index = {}, 1
+  for i = 1, #changed_parts do
+    local part = changed_parts[i]
+    if index < part[1] then
+      table.insert(virt_line, { line:sub(index, part[1] - 1), 'MiniDiffOverContext' })
+    end
+    table.insert(virt_line, { line:sub(part[1], part[2]), 'MiniDiffOverChange' })
+    index = part[2] + 1
+  end
+  if index <= line:len() then
+    table.insert(virt_line, { line:sub(index), 'MiniDiffOverContext' })
+  end
+  return virt_line
 end
 
 return MiniDiff
