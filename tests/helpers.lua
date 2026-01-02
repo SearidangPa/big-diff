@@ -10,10 +10,21 @@ M.setup_buffer = function(lines, ref_lines)
 
   require("mini.diff").set_ref_text(buf_id, ref_lines)
   
-  -- Wait for debounce
-  vim.wait(300)
+  M.wait_for_update(buf_id)
   
   return buf_id
+end
+
+M.wait_for_update = function(buf_id)
+  local done = false
+  local id = vim.api.nvim_create_autocmd('User', {
+    pattern = 'MiniDiffUpdated',
+    callback = function()
+      if vim.api.nvim_get_current_buf() == buf_id then done = true end
+    end,
+  })
+  vim.wait(1000, function() return done end)
+  pcall(vim.api.nvim_del_autocmd, id)
 end
 
 M.get_hunks = function(buf_id)

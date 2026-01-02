@@ -90,13 +90,13 @@ describe('mini.diff', function()
 
       diff.disable(buf_id)
       diff.set_ref_text(buf_id, { 'a', 'c', 'e' })
-      vim.wait(300)                              -- Wait for update
+      helpers.wait_for_update(buf_id)
 
-      vim.api.nvim_win_set_cursor(0, { 4, 0 })   -- On last hunk
+      vim.api.nvim_win_set_cursor(0, { 4, 0 }) -- On last hunk
 
       diff.goto_hunk('next')
       local cursor = vim.api.nvim_win_get_cursor(0)
-      assert.are.same(2, cursor[1])   -- Should wrap to first
+      assert.are.same(2, cursor[1]) -- Should wrap to first
     end)
   end)
 
