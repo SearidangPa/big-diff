@@ -520,16 +520,23 @@ M.create_default_hl = function()
   local is_dark = vim.o.background == 'dark'
 
   if is_dark then
-    hi_overlay('MiniDiffOverAdd', { bg = '#032800' })
-    hi_overlay('MiniDiffOverContext', { bg = '#451B21' })
-    hi_overlay('MiniDiffOverDelete', { bg = '#3c1e21', fg = '#ff7b72' })
-    hi_overlay('MiniDiffOverChange', { bg = '#E99B97', fg = '#f0b656' })
-    hi_overlay('MiniDiffOverContextBuf', {})
-    hi_overlay('MiniDiffOverChangeBuf', { fg = '#AED28C', bg = '#0d1117' })
+    -- hi_overlay('MiniDiffOverAdd', { bg = '#032800' })
+    -- hi_overlay('MiniDiffOverContext', { bg = '#451B21' })
+    -- hi_overlay('MiniDiffOverDelete', { bg = '#3c1e21', fg = '#ff7b72' })
+    -- hi_overlay('MiniDiffOverChange', { bg = '#E99B97', fg = '#f0b656' })
+    -- hi_overlay('MiniDiffOverContextBuf', {})
+    -- hi_overlay('MiniDiffOverChangeBuf', { fg = '#AED28C', bg = '#0d1117' })
+    hi_overlay('MiniDiffOverAdd', { bg = '#2E3B2F' })                     -- muted green add
+    hi_overlay('MiniDiffOverChangeBuf', { fg = '#9AD29A' })               -- soft green text
+    hi_overlay('MiniDiffOverContextBuf', { bg = '#2A283D' })              -- subtle indigo context
+
+    hi_overlay('MiniDiffOverDelete', { bg = '#3B2428', fg = '#FF9A9A' })  -- warm red delete
+    hi_overlay('MiniDiffOverContext', { bg = '#58102E', fg = '#E3B6FF' }) -- purple context
+    hi_overlay('MiniDiffOverChange', { bg = '#330011', fg = '#F2C879' })  -- amber change
   else
     hi_overlay('MiniDiffOverAdd', { bg = '#dafbe1' })
-    hi_overlay('MiniDiffOverChangeBuf', { fg = '#1a7f37' })
-    hi_overlay('MiniDiffOverContextBuf', { bg = '#dafbe1' })
+    hi_overlay('MiniDiffOverChangeBuf', { bg = '#CFE6BB' })
+    hi_overlay('MiniDiffOverContextBuf', { bg = '#D2F4DA' })
     hi_overlay('MiniDiffOverDelete', { bg = '#FFE0E0', fg = '#cf222e' })
     hi_overlay('MiniDiffOverContext', { bg = '#FAE6E5', fg = '#F0B656' })
     hi_overlay('MiniDiffOverChange', { bg = '#F6DAD9', fg = '#953800' })
