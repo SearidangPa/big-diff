@@ -528,11 +528,11 @@ M.create_default_hl = function()
     hi_overlay('MiniDiffOverChangeBuf', { fg = '#AED28C', bg = '#0d1117' })
   else
     hi_overlay('MiniDiffOverAdd', { bg = '#dafbe1' })
-    hi_overlay('MiniDiffOverDelete', { bg = '#FFE0E0', fg = '#cf222e' })
-    hi_overlay('MiniDiffOverContext', { bg = '#FFE0E0' })
-    hi_overlay('MiniDiffOverChange', { bg = '#E99B97', fg = '#953800' })
-    hi_overlay('MiniDiffOverContextBuf', { bg = '#dafbe1' })
     hi_overlay('MiniDiffOverChangeBuf', { fg = '#1a7f37' })
+    hi_overlay('MiniDiffOverContextBuf', { bg = '#dafbe1' })
+    hi_overlay('MiniDiffOverDelete', { bg = '#FFE0E0', fg = '#cf222e' })
+    hi_overlay('MiniDiffOverContext', { bg = '#FAE6E5', fg = '#F0B656' })
+    hi_overlay('MiniDiffOverChange', { bg = '#F6DAD9', fg = '#953800' })
   end
 end
 
