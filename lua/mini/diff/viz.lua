@@ -431,7 +431,7 @@ end
 -- Redefine on_resize to just do what it can here, returning buf_ids to update?
 -- Or just let init.lua handle the loop.
 M.update_overlay_suffix = function()
-    overlay_suffix = string.rep(' ', vim.o.columns)
+  overlay_suffix = string.rep(' ', vim.o.columns)
 end
 
 M.convert_view_to_extmark_opts = function(view)
@@ -510,11 +510,12 @@ M.create_default_hl = function()
   hi('MiniDiffSignChange', { link = has_core_diff_hl and 'Changed' or 'diffChanged' })
   hi('MiniDiffSignDelete', { link = has_core_diff_hl and 'Removed' or 'diffRemoved' })
   hi('MiniDiffOverAdd', { fg = '#AED28C' })                    -- Green for additions
-  hi('MiniDiffOverChange', { fg = '#f38ba8', bg = '#3a1a1a' }) -- Red for reference (old) text
   hi('MiniDiffOverChangeBuf', { fg = '#AED28C' })              -- Green for buffer (new) text
-  hi('MiniDiffOverContext', { bg = '#502020' })
   hi('MiniDiffOverContextBuf', {})
   hi('MiniDiffOverDelete', { fg = '#f38ba8', bg = '#3a1a1a' }) -- Red for deletions
+
+  vim.api.nvim_set_hl(0, 'MiniDiffOverContext', { bg = '#451B21' })
+  vim.api.nvim_set_hl(0, 'MiniDiffOverChange', { fg = '#ea9a97', bg = '#79502E' })
 end
 
 M.clear_blended_hl_cache = function()
