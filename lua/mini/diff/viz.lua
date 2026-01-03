@@ -520,12 +520,12 @@ M.create_default_hl = function()
   local is_dark = vim.o.background == 'dark'
 
   if is_dark then
-    hi_overlay('MiniDiffOverAdd', { bg = '#24382A' })        -- muted green add
-    hi_overlay('MiniDiffOverChangeBuf', { bg = '#273B2A' })  -- soft green text
-    hi_overlay('MiniDiffOverDelete', { bg = '#4F0517' })
-    hi_overlay('MiniDiffOverContextBuf', { bg = '#17261A' }) -- highlight same in buffer
-    hi_overlay('MiniDiffOverContext', { bg = '#6B0737' })    -- highlight same in reference
-    hi_overlay('MiniDiffOverChange', { bg = '#330011' })     -- background for changed text
+    hi_overlay('MiniDiffOverAdd', { bg = '#243d2a' })        -- dark green (additions)
+    hi_overlay('MiniDiffOverChangeBuf', { bg = '#2f3d22' })  -- dark olive-green (matches yellow-green of light)
+    hi_overlay('MiniDiffOverContextBuf', { bg = '#1f3326' }) -- subtle dark green
+    hi_overlay('MiniDiffOverDelete', { bg = '#3d2022' })     -- dark red
+    hi_overlay('MiniDiffOverContext', { bg = '#3a2426' })    -- dark rose/peach
+    hi_overlay('MiniDiffOverChange', { bg = '#330011' })     -- muted dark pink
   else
     hi_overlay('MiniDiffOverAdd', { bg = '#dafbe1' })
     hi_overlay('MiniDiffOverChangeBuf', { bg = '#CFE6BB' })
