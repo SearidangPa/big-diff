@@ -530,9 +530,9 @@ M.create_default_hl = function()
   else
     -- GitHub light mode colors
     hi_overlay('MiniDiffOverAdd', { bg = '#dafbe1' })
-    hi_overlay('MiniDiffOverDelete', { bg = '#ffebe9', fg = '#cf222e' })
-    hi_overlay('MiniDiffOverContext', { bg = '#ffebe9' })
-    hi_overlay('MiniDiffOverChange', { bg = '#ffc86e', fg = '#953800' })
+    hi_overlay('MiniDiffOverDelete', { bg = '#FFE0E0', fg = '#cf222e' })
+    hi_overlay('MiniDiffOverContext', { bg = '#FFE0E0' })
+    hi_overlay('MiniDiffOverChange', { bg = '#E99B97', fg = '#953800' })
     hi_overlay('MiniDiffOverContextBuf', { bg = '#dafbe1' })
     hi_overlay('MiniDiffOverChangeBuf', { fg = '#1a7f37' })
   end
