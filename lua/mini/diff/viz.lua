@@ -521,18 +521,18 @@ M.create_default_hl = function()
 
   if is_dark then
     hi_overlay('MiniDiffOverAdd', { bg = '#243d2a' })        -- dark green (additions)
-    hi_overlay('MiniDiffOverChangeBuf', { bg = '#2f3d22' })  -- dark olive-green (matches yellow-green of light)
-    hi_overlay('MiniDiffOverContextBuf', { bg = '#1f3326' }) -- subtle dark green
     hi_overlay('MiniDiffOverDelete', { bg = '#3d2022' })     -- dark red
     hi_overlay('MiniDiffOverContext', { bg = '#3a2426' })    -- dark rose/peach
+    hi_overlay('MiniDiffOverContextBuf', { bg = '#1f3326' }) -- subtle dark green
     hi_overlay('MiniDiffOverChange', { bg = '#330011' })     -- muted dark pink
+    hi_overlay('MiniDiffOverChangeBuf', { bg = '#2f3d22' })  -- dark olive-green (matches yellow-green of light)
   else
     hi_overlay('MiniDiffOverAdd', { bg = '#dafbe1' })
-    hi_overlay('MiniDiffOverChangeBuf', { bg = '#CFE6BB' })
-    hi_overlay('MiniDiffOverContextBuf', { bg = '#D2F4DA' })
     hi_overlay('MiniDiffOverDelete', { bg = '#FFE0E0' })
     hi_overlay('MiniDiffOverContext', { bg = '#FAE6E5' })
+    hi_overlay('MiniDiffOverContextBuf', { bg = '#D2F4DA' })
     hi_overlay('MiniDiffOverChange', { bg = '#F6DAD9' })
+    hi_overlay('MiniDiffOverChangeBuf', { bg = '#CFE6BB' })
   end
 end
 
