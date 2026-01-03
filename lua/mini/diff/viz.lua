@@ -505,17 +505,37 @@ M.create_default_hl = function()
     vim.api.nvim_set_hl(0, name, opts)
   end
 
+  -- Overlay highlights should NOT use default=true
+  -- They should always apply to ensure correct diff visualization
+  local hi_overlay = function(name, opts)
+    vim.api.nvim_set_hl(0, name, opts)
+  end
+
   local has_core_diff_hl = vim.fn.has('nvim-0.10') == 1
   hi('MiniDiffSignAdd', { link = has_core_diff_hl and 'Added' or 'diffAdded' })
   hi('MiniDiffSignChange', { link = has_core_diff_hl and 'Changed' or 'diffChanged' })
   hi('MiniDiffSignDelete', { link = has_core_diff_hl and 'Removed' or 'diffRemoved' })
-  hi('MiniDiffOverAdd', { fg = '#AED28C' })                    -- Green for additions
-  hi('MiniDiffOverChangeBuf', { fg = '#AED28C' })              -- Green for buffer (new) text
-  hi('MiniDiffOverContextBuf', {})
-  hi('MiniDiffOverDelete', { fg = '#f38ba8', bg = '#3a1a1a' }) -- Red for deletions
 
-  vim.api.nvim_set_hl(0, 'MiniDiffOverContext', { bg = '#451B21' })
-  vim.api.nvim_set_hl(0, 'MiniDiffOverChange', { fg = '#ea9a97', bg = '#79502E' })
+  -- GitHub Primer diff colors (light/dark mode aware)
+  local is_dark = vim.o.background == 'dark'
+
+  if is_dark then
+    -- GitHub dark mode colors (pre-blended with #0d1117 background)
+    hi_overlay('MiniDiffOverAdd', { bg = '#032800' })
+    hi_overlay('MiniDiffOverContext', { bg = '#451B21' })
+    hi_overlay('MiniDiffOverDelete', { bg = '#3c1e21', fg = '#ff7b72' })
+    hi_overlay('MiniDiffOverChange', { bg = '#E99B97', fg = '#f0b656' })
+    hi_overlay('MiniDiffOverContextBuf', {})
+    hi_overlay('MiniDiffOverChangeBuf', { fg = '#AED28C', bg = '#0d1117' })
+  else
+    -- GitHub light mode colors
+    hi_overlay('MiniDiffOverAdd', { bg = '#dafbe1' })
+    hi_overlay('MiniDiffOverDelete', { bg = '#ffebe9', fg = '#cf222e' })
+    hi_overlay('MiniDiffOverContext', { bg = '#ffebe9' })
+    hi_overlay('MiniDiffOverChange', { bg = '#ffc86e', fg = '#953800' })
+    hi_overlay('MiniDiffOverContextBuf', { bg = '#dafbe1' })
+    hi_overlay('MiniDiffOverChangeBuf', { fg = '#1a7f37' })
+  end
 end
 
 M.clear_blended_hl_cache = function()
