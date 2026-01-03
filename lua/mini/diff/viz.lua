@@ -520,17 +520,9 @@ M.create_default_hl = function()
   local is_dark = vim.o.background == 'dark'
 
   if is_dark then
-    -- hi_overlay('MiniDiffOverAdd', { bg = '#032800' })
-    -- hi_overlay('MiniDiffOverContext', { bg = '#451B21' })
-    -- hi_overlay('MiniDiffOverDelete', { bg = '#3c1e21', fg = '#ff7b72' })
-    -- hi_overlay('MiniDiffOverChange', { bg = '#E99B97', fg = '#f0b656' })
-    -- hi_overlay('MiniDiffOverContextBuf', {})
-    -- hi_overlay('MiniDiffOverChangeBuf', { fg = '#AED28C', bg = '#0d1117' })
-    hi_overlay('MiniDiffOverAdd', { bg = '#24382A' })       -- muted green add
-    hi_overlay('MiniDiffOverChangeBuf', { bg = '#273B2A' }) -- soft green text
-
-    -- hi_overlay('MiniDiffOverDelete', { bg = '#4F0517' })
-    -- #523045
+    hi_overlay('MiniDiffOverAdd', { bg = '#24382A' })        -- muted green add
+    hi_overlay('MiniDiffOverChangeBuf', { bg = '#273B2A' })  -- soft green text
+    hi_overlay('MiniDiffOverDelete', { bg = '#4F0517' })
     hi_overlay('MiniDiffOverContextBuf', { bg = '#17261A' }) -- highlight same in buffer
     hi_overlay('MiniDiffOverContext', { bg = '#6B0737' })    -- highlight same in reference
     hi_overlay('MiniDiffOverChange', { bg = '#330011' })     -- background for changed text
