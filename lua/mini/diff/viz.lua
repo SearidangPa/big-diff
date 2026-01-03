@@ -520,7 +520,6 @@ M.create_default_hl = function()
   local is_dark = vim.o.background == 'dark'
 
   if is_dark then
-    -- GitHub dark mode colors (pre-blended with #0d1117 background)
     hi_overlay('MiniDiffOverAdd', { bg = '#032800' })
     hi_overlay('MiniDiffOverContext', { bg = '#451B21' })
     hi_overlay('MiniDiffOverDelete', { bg = '#3c1e21', fg = '#ff7b72' })
@@ -528,7 +527,6 @@ M.create_default_hl = function()
     hi_overlay('MiniDiffOverContextBuf', {})
     hi_overlay('MiniDiffOverChangeBuf', { fg = '#AED28C', bg = '#0d1117' })
   else
-    -- GitHub light mode colors
     hi_overlay('MiniDiffOverAdd', { bg = '#dafbe1' })
     hi_overlay('MiniDiffOverDelete', { bg = '#FFE0E0', fg = '#cf222e' })
     hi_overlay('MiniDiffOverContext', { bg = '#FFE0E0' })
