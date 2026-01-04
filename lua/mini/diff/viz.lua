@@ -516,7 +516,6 @@ M.create_default_hl = function()
   hi('MiniDiffSignChange', { link = has_core_diff_hl and 'Changed' or 'diffChanged' })
   hi('MiniDiffSignDelete', { link = has_core_diff_hl and 'Removed' or 'diffRemoved' })
 
-  -- GitHub Primer diff colors (light/dark mode aware)
   local is_dark = vim.o.background == 'dark'
 
   if is_dark then
