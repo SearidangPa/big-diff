@@ -529,7 +529,7 @@ M.create_default_hl = function()
   -- Float highlight groups
   hi('MiniDiffFloatAdd', { link = has_core_diff_hl and 'Added' or 'diffAdded' })
   hi('MiniDiffFloatChange', { fg = '#F6C178' })
-  hi('MiniDiffFloatDelete', { link = has_core_diff_hl and 'Removed' or 'diffRemoved' })
+  hi('MiniDiffFloatDelete', { fg = '#E99B97' })
   hi('MiniDiffFloatCursor', { link = 'CurSearch' })
   hi('MiniDiffFloatNormal', { link = 'NormalFloat' })
 end
