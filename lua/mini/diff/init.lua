@@ -325,7 +325,7 @@ local update_float_content = function(buf_id)
   local highlights = {}
 
   if #ranges == 0 then
-    table.insert(lines, '  No hunks')
+    table.insert(lines, ' No hunks')
   else
     -- Determine where to insert cursor indicator
     local cursor_line_idx = nil
