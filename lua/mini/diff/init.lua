@@ -335,7 +335,7 @@ local update_float_content = function(buf_id)
     for i, range in ipairs(ranges) do
       -- Insert cursor line before this hunk if needed
       if cursor_line_idx and cursor_line_idx == i - 1 then
-        table.insert(lines, '>')
+        table.insert(lines, '⋮')
         table.insert(highlights, {
           line = #lines - 1,
           col_start = 0,
@@ -374,7 +374,7 @@ local update_float_content = function(buf_id)
 
     -- Insert cursor line after all hunks if needed
     if cursor_line_idx and cursor_line_idx == #ranges then
-      table.insert(lines, '>')
+      table.insert(lines, '⋮')
       table.insert(highlights, {
         line = #lines - 1,
         col_start = 0,
