@@ -246,7 +246,7 @@ local create_float_win = function(buf_id)
     row = 2,
     col = vim.o.columns - float_config.width,
     style = 'minimal',
-    border = 'none',
+    border = 'rounded',
     zindex = float_config.zindex,
     focusable = false,
   }
