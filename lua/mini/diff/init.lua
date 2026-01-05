@@ -165,7 +165,7 @@ MiniDiff.enable = function(buf_id)
   if attach_output == false then MiniDiff.fail_attach(buf_id) end
 end
 
-local close_float = function()
+MiniDiff.close_float = function()
   if H.state.float_win and vim.api.nvim_win_is_valid(H.state.float_win) then
     vim.api.nvim_win_close(H.state.float_win, true)
   end
@@ -540,7 +540,7 @@ MiniDiff.toggle_float = function(buf_id)
 
   teardown_float_autocmds()
   clear_float_content()
-  close_float()
+  MiniDiff.close_float()
 end
 
 MiniDiff.export = H.hunk.export
