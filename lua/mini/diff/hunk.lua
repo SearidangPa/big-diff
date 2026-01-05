@@ -226,6 +226,10 @@ M.goto_hunk = function(direction, opts)
 
   -- Open just enough folds
   vim.cmd('normal! zv')
+
+  -- Update hunk_idx in summary
+  buf_cache.summary.hunk_idx = res_ind
+  vim.b[buf_id].minidiff_summary = buf_cache.summary
 end
 
 M.operator = function(mode)
@@ -281,5 +285,8 @@ M.export = function(format, opts)
   if format == 'qf' then return export_qf(opts) end
   H.log.error('`format` should be one of "qf".')
 end
+
+-- Export helper for float feature
+M.get_contiguous_hunk_ranges = get_contiguous_hunk_ranges
 
 return M

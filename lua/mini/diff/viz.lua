@@ -362,7 +362,6 @@ M.update_hunk_data = function(diff, buf_cache, buf_lines)
 
   local extmark_opts, priority = buf_cache.extmark_opts, buf_cache.config.view.priority
   local hunks, viz_lines, overlay_lines = {}, {}, {}
-  local n_add, n_change, n_delete = 0, 0, 0
   local n_ranges, last_range_to = 0, -math.huge
   for i, d in ipairs(diff) do
     -- Hunk
@@ -370,12 +369,6 @@ M.update_hunk_data = function(diff, buf_cache, buf_lines)
     local hunk_type = n_ref == 0 and 'add' or (n_buf == 0 and 'delete' or 'change')
     local hunk = { type = hunk_type, ref_start = d[1], ref_count = n_ref, buf_start = d[3], buf_count = n_buf }
     hunks[i] = hunk
-
-    -- Hunk summary
-    local hunk_n_change = math.min(n_ref, n_buf)
-    n_add = n_add + n_buf - hunk_n_change
-    n_change = n_change + hunk_n_change
-    n_delete = n_delete + n_ref - hunk_n_change
 
     -- Number of contiguous ranges.
     -- NOTE: this relies on `vim.diff()` output being sorted by `buf_start`.
@@ -399,8 +392,7 @@ M.update_hunk_data = function(diff, buf_cache, buf_lines)
   end
 
   buf_cache.hunks, buf_cache.viz_lines, buf_cache.overlay_lines = hunks, viz_lines, overlay_lines
-  buf_cache.summary = { add = n_add, change = n_change, delete = n_delete, n_ranges = n_ranges }
-  buf_cache.summary.source_name = (buf_cache.source[buf_cache.source_id] or {}).name
+  buf_cache.summary = { hunk_total = n_ranges, hunk_idx = nil, source_name = (buf_cache.source[buf_cache.source_id] or {}).name }
 end
 
 M.clear_all_diff = function(buf_id)
@@ -533,6 +525,13 @@ M.create_default_hl = function()
     hi_overlay('MiniDiffOverChange', { bg = '#F6DAD9' })
     hi_overlay('MiniDiffOverChangeBuf', { bg = '#CFE6BB' })
   end
+
+  -- Float highlight groups
+  hi('MiniDiffFloatAdd', { link = has_core_diff_hl and 'Added' or 'diffAdded' })
+  hi('MiniDiffFloatChange', { link = has_core_diff_hl and 'Changed' or 'diffChanged' })
+  hi('MiniDiffFloatDelete', { link = has_core_diff_hl and 'Removed' or 'diffRemoved' })
+  hi('MiniDiffFloatCursor', { link = 'CurSearch' })
+  hi('MiniDiffFloatNormal', { link = 'NormalFloat' })
 end
 
 M.clear_blended_hl_cache = function()

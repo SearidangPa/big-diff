@@ -2,11 +2,17 @@ local M = {}
 
 -- Timers
 M.timer_diff_update = vim.loop.new_timer()
+M.timer_float_update = nil
+
+-- Float window state
+M.float_win = nil
+M.float_buf = nil
 
 -- Namespaces per highlighter name
 M.ns_id = {
   viz = vim.api.nvim_create_namespace('MiniDiffViz'),
   overlay = vim.api.nvim_create_namespace('MiniDiffOverlay'),
+  float = vim.api.nvim_create_namespace('MiniDiffFloat'),
 }
 
 -- Cache of buffers waiting for debounced diff update

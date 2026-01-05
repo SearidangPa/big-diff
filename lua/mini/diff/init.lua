@@ -42,6 +42,7 @@ MiniDiff.setup = function(config)
   H.vim.map('o', mappings.goto_next, "V<Cmd>lua MiniDiff.goto_hunk('next')<CR>", { desc = 'Next hunk' })
   H.vim.map({ 'n', 'x' }, mappings.goto_last, "<Cmd>lua MiniDiff.goto_hunk('last')<CR>", { desc = 'Last hunk' })
   H.vim.map('o', mappings.goto_last, "V<Cmd>lua MiniDiff.goto_hunk('last')<CR>", { desc = 'Last hunk' })
+  H.vim.map('n', mappings.toggle_float, '<Cmd>lua MiniDiff.toggle_float()<CR>', { desc = 'Toggle diff float' })
   --stylua: ignore end
 
   -- Register decoration provider
@@ -164,18 +165,32 @@ MiniDiff.enable = function(buf_id)
   if attach_output == false then MiniDiff.fail_attach(buf_id) end
 end
 
+local close_float = function()
+  if H.state.float_win and vim.api.nvim_win_is_valid(H.state.float_win) then
+    vim.api.nvim_win_close(H.state.float_win, true)
+  end
+  H.state.float_win = nil
+end
+
 MiniDiff.disable = function(buf_id)
   buf_id = H.val.validate_buf_id(buf_id)
 
   local buf_cache = H.state.cache[buf_id]
   if buf_cache == nil then return end
+
+  -- Close float if this buffer had it enabled
+  if buf_cache.float_enabled then
+    close_float()
+    teardown_float_cursor_autocmd(buf_id)
+  end
+
   H.state.cache[buf_id] = nil
   H.state.ts_cache[buf_id] = nil
 
   pcall(vim.api.nvim_del_augroup_by_id, buf_cache.augroup)
-  vim.b[buf_id].minidiff_summary, vim.b[buf_id].minidiff_summary_string = nil, nil
+  vim.b[buf_id].minidiff_summary = nil
   H.viz.clear_all_diff(buf_id)
-  
+
   local active_source = buf_cache.source[buf_cache.source_id] or {}
   pcall(active_source.detach, buf_id)
 end
@@ -195,6 +210,265 @@ MiniDiff.toggle_overlay = function()
       H.viz.clear_all_diff(buf_id)
       MiniDiff.schedule_diff_update(buf_id, 0)
     end
+  end
+end
+
+-- Float window helpers -------------------------------------------------------
+local create_float_buf = function()
+  if H.state.float_buf and vim.api.nvim_buf_is_valid(H.state.float_buf) then return H.state.float_buf end
+
+  H.state.float_buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[H.state.float_buf].buftype = 'nofile'
+  vim.bo[H.state.float_buf].bufhidden = 'hide'
+  vim.bo[H.state.float_buf].swapfile = false
+  vim.bo[H.state.float_buf].modifiable = false
+  return H.state.float_buf
+end
+
+local create_float_win = function(buf_id)
+  local buf_cache = H.state.cache[buf_id]
+  if buf_cache == nil then return end
+
+  local float_config = buf_cache.config.view.float
+  local float_buf = create_float_buf()
+
+  -- Calculate height based on hunks
+  local ranges = H.hunk.get_contiguous_hunk_ranges(buf_cache.hunks)
+  local height = math.max(#ranges + 1, 1) -- +1 for potential cursor line between hunks
+
+  local win_opts = {
+    relative = 'editor',
+    width = float_config.width,
+    height = height,
+    row = 2,
+    col = vim.o.columns - float_config.width,
+    style = 'minimal',
+    border = 'none',
+    zindex = float_config.zindex,
+    focusable = false,
+  }
+
+  if H.state.float_win and vim.api.nvim_win_is_valid(H.state.float_win) then
+    vim.api.nvim_win_set_config(H.state.float_win, win_opts)
+  else
+    H.state.float_win = vim.api.nvim_open_win(float_buf, false, win_opts)
+    vim.wo[H.state.float_win].winblend = float_config.winblend
+    vim.wo[H.state.float_win].cursorline = false
+    vim.wo[H.state.float_win].number = false
+    vim.wo[H.state.float_win].relativenumber = false
+    vim.wo[H.state.float_win].winhighlight = 'Normal:MiniDiffFloatNormal'
+  end
+end
+
+
+local get_cursor_hunk_position = function(ranges, cursor_line)
+  if #ranges == 0 then return { type = 'no_hunks' } end
+
+  -- Check if cursor is before all hunks
+  if cursor_line < ranges[1].from then
+    return { type = 'before_all' }
+  end
+
+  -- Check if cursor is after all hunks
+  if cursor_line > ranges[#ranges].to then
+    return { type = 'after_all' }
+  end
+
+  -- Check if cursor is on a hunk or between hunks
+  for i, range in ipairs(ranges) do
+    if cursor_line >= range.from and cursor_line <= range.to then
+      return { type = 'on', idx = i }
+    end
+    if i < #ranges and cursor_line > range.to and cursor_line < ranges[i + 1].from then
+      return { type = 'between', before = i, after = i + 1 }
+    end
+  end
+
+  return { type = 'after_all' }
+end
+
+local get_hunk_type_for_range = function(hunks, range)
+  -- Find the dominant hunk type for a contiguous range
+  for _, hunk in ipairs(hunks) do
+    local hunk_from = math.max(hunk.buf_start, 1)
+    local hunk_to = hunk_from + math.max(hunk.buf_count, 1) - 1
+    if hunk_from >= range.from and hunk_to <= range.to then
+      -- Prefer 'change' type if mixed
+      if hunk.type == 'change' then return 'change' end
+    end
+  end
+  -- Return type of first hunk in range
+  for _, hunk in ipairs(hunks) do
+    local hunk_from = math.max(hunk.buf_start, 1)
+    if hunk_from >= range.from and hunk_from <= range.to then
+      return hunk.type
+    end
+  end
+  return 'add'
+end
+
+local update_float_content = function(buf_id)
+  local buf_cache = H.state.cache[buf_id]
+  if buf_cache == nil or not buf_cache.float_enabled then return end
+  if not H.state.float_buf or not vim.api.nvim_buf_is_valid(H.state.float_buf) then return end
+
+  local ranges = H.hunk.get_contiguous_hunk_ranges(buf_cache.hunks)
+  local cursor_line = vim.fn.line('.')
+  local cursor_pos = get_cursor_hunk_position(ranges, cursor_line)
+
+  local lines = {}
+  local highlights = {}
+
+  if #ranges == 0 then
+    table.insert(lines, '  No hunks')
+  else
+    -- Determine where to insert cursor indicator
+    local cursor_line_idx = nil
+    if cursor_pos.type == 'before_all' then
+      cursor_line_idx = 0
+    elseif cursor_pos.type == 'between' then
+      cursor_line_idx = cursor_pos.before
+    elseif cursor_pos.type == 'after_all' then
+      cursor_line_idx = #ranges
+    end
+
+    for i, range in ipairs(ranges) do
+      -- Insert cursor line before this hunk if needed
+      if cursor_line_idx and cursor_line_idx == i - 1 then
+        table.insert(lines, '>')
+        table.insert(highlights, {
+          line = #lines - 1,
+          col_start = 0,
+          col_end = 1,
+          hl = 'MiniDiffFloatCursor',
+        })
+        cursor_line_idx = nil -- Mark as inserted
+      end
+
+      local hunk_type = get_hunk_type_for_range(buf_cache.hunks, range)
+      local is_current = cursor_pos.type == 'on' and cursor_pos.idx == i
+      local prefix = is_current and '>' or ' '
+      local line = string.format('%s %s', prefix, hunk_type)
+      table.insert(lines, line)
+
+      local line_idx = #lines - 1
+      -- Highlight prefix
+      if is_current then
+        table.insert(highlights, {
+          line = line_idx,
+          col_start = 0,
+          col_end = 1,
+          hl = 'MiniDiffFloatCursor',
+        })
+      end
+
+      -- Highlight hunk type
+      local hl_group = 'MiniDiffFloat' .. hunk_type:sub(1, 1):upper() .. hunk_type:sub(2)
+      table.insert(highlights, {
+        line = line_idx,
+        col_start = 2,
+        col_end = #line,
+        hl = hl_group,
+      })
+    end
+
+    -- Insert cursor line after all hunks if needed
+    if cursor_line_idx and cursor_line_idx == #ranges then
+      table.insert(lines, '>')
+      table.insert(highlights, {
+        line = #lines - 1,
+        col_start = 0,
+        col_end = 1,
+        hl = 'MiniDiffFloatCursor',
+      })
+    end
+  end
+
+  -- Update buffer content
+  vim.bo[H.state.float_buf].modifiable = true
+  vim.api.nvim_buf_set_lines(H.state.float_buf, 0, -1, false, lines)
+  vim.bo[H.state.float_buf].modifiable = false
+
+  -- Apply highlights
+  local ns = H.state.ns_id.float
+  vim.api.nvim_buf_clear_namespace(H.state.float_buf, ns, 0, -1)
+  for _, hl in ipairs(highlights) do
+    vim.api.nvim_buf_set_extmark(H.state.float_buf, ns, hl.line, hl.col_start, {
+      end_col = hl.col_end,
+      hl_group = hl.hl,
+      priority = 100,
+      strict = false,
+    })
+  end
+
+  -- Update window size
+  create_float_win(buf_id)
+end
+
+local schedule_float_update = function(buf_id)
+  local buf_cache = H.state.cache[buf_id]
+  if buf_cache == nil then return end
+
+  local throttle_ms = buf_cache.config.view.float.throttle_ms
+
+  if H.state.timer_float_update then
+    H.state.timer_float_update:stop()
+    H.state.timer_float_update:close()
+  end
+
+  H.state.timer_float_update = vim.defer_fn(function()
+    if vim.api.nvim_get_current_buf() == buf_id then
+      update_float_content(buf_id)
+    end
+    H.state.timer_float_update = nil
+  end, throttle_ms)
+end
+
+local setup_float_cursor_autocmd = function(buf_id)
+  local buf_cache = H.state.cache[buf_id]
+  if buf_cache == nil then return end
+
+  -- Store autocmd id so we can remove it later
+  buf_cache.float_cursor_autocmd = vim.api.nvim_create_autocmd('CursorMoved', {
+    buffer = buf_id,
+    group = buf_cache.augroup,
+    callback = function()
+      schedule_float_update(buf_id)
+    end,
+    desc = 'Update diff float on cursor move',
+  })
+end
+
+local teardown_float_cursor_autocmd = function(buf_id)
+  local buf_cache = H.state.cache[buf_id]
+  if buf_cache == nil then return end
+
+  if buf_cache.float_cursor_autocmd then
+    pcall(vim.api.nvim_del_autocmd, buf_cache.float_cursor_autocmd)
+    buf_cache.float_cursor_autocmd = nil
+  end
+
+  -- Clean up timer if running
+  if H.state.timer_float_update then
+    H.state.timer_float_update:stop()
+    H.state.timer_float_update:close()
+    H.state.timer_float_update = nil
+  end
+end
+
+MiniDiff.toggle_float = function(buf_id)
+  buf_id = H.val.validate_buf_id(buf_id)
+  local buf_cache = H.state.cache[buf_id]
+  if buf_cache == nil then return H.log.notify('Buffer is not enabled', 'WARN') end
+
+  buf_cache.float_enabled = not buf_cache.float_enabled
+  if buf_cache.float_enabled then
+    create_float_win(buf_id)
+    update_float_content(buf_id)
+    setup_float_cursor_autocmd(buf_id)
+  else
+    close_float()
+    teardown_float_cursor_autocmd(buf_id)
   end
 end
 
@@ -294,9 +568,9 @@ MiniDiff.update_buf_diff = vim.schedule_wrap(function(buf_id)
   end
   if type(buf_cache.ref_text) ~= 'string' or H.config.is_disabled(buf_id) then
     local active_source = buf_cache.source[buf_cache.source_id] or {}
-    local summary = { source_name = active_source.name }
+    local summary = { source_name = active_source.name, hunk_total = 0, hunk_idx = nil }
     buf_cache.hunks, buf_cache.viz_lines, buf_cache.overlay_lines, buf_cache.summary = {}, {}, {}, summary
-    vim.b[buf_id].minidiff_summary, vim.b[buf_id].minidiff_summary_string = summary, ''
+    vim.b[buf_id].minidiff_summary = summary
     return
   end
 
@@ -314,15 +588,7 @@ MiniDiff.update_buf_diff = vim.schedule_wrap(function(buf_id)
   H.viz.update_hunk_data(diff, buf_cache, buf_lines)
 
   -- Set buffer-local variables with summary for easier external usage
-  local summary = buf_cache.summary
-  vim.b[buf_id].minidiff_summary = summary
-
-  local summary_string = {}
-  if summary.n_ranges > 0 then table.insert(summary_string, '#' .. summary.n_ranges) end
-  if summary.add > 0 then table.insert(summary_string, '+' .. summary.add) end
-  if summary.change > 0 then table.insert(summary_string, '~' .. summary.change) end
-  if summary.delete > 0 then table.insert(summary_string, '-' .. summary.delete) end
-  vim.b[buf_id].minidiff_summary_string = table.concat(summary_string, ' ')
+  vim.b[buf_id].minidiff_summary = buf_cache.summary
 
   -- Request highlighting clear to be done in decoration provider
   buf_cache.needs_clear = true
