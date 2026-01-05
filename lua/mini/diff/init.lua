@@ -337,7 +337,7 @@ local update_float_content = function(buf_id)
       cursor_line_idx = #ranges
     end
 
-    local show_in_between_cursor = function(line)
+    local show_in_between_cursor = function()
       -- insert 4 empty spaces so that we can insert the cursor symbol in the middle
       -- also highlight it
       local cursor_text = '   >'
@@ -353,7 +353,7 @@ local update_float_content = function(buf_id)
     for i, range in ipairs(ranges) do
       -- Insert cursor line before this hunk if needed
       if cursor_line_idx and cursor_line_idx == i - 1 then
-        show_in_between_cursor(1)
+        show_in_between_cursor()
         cursor_line_idx = nil -- Mark as inserted
       end
 
@@ -386,7 +386,7 @@ local update_float_content = function(buf_id)
 
     -- Insert cursor line after all hunks if needed
     if cursor_line_idx and cursor_line_idx == #ranges then
-      show_in_between_cursor(line_idx)
+      show_in_between_cursor()
     end
   end
 
@@ -474,6 +474,18 @@ local setup_float_autocmds = function()
     end,
     desc = 'Update diff float on cursor move',
   })
+end
+
+MiniDiff.open_float = function(buf_id)
+  buf_id = H.val.validate_buf_id(buf_id)
+
+  if H.state.float_enabled then return end
+  H.state.float_enabled = true
+  setup_float_autocmds()
+  H.state.float_buf_id = buf_id
+  create_float_win(buf_id)
+  if H.state.cache[buf_id] == nil then return clear_float_content() end
+  return update_float_content(buf_id)
 end
 
 MiniDiff.toggle_float = function(buf_id)
