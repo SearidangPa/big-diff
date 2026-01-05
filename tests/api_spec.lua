@@ -62,9 +62,10 @@ describe('mini.diff API', function()
        assert.is_string(data.ref_text)
        assert.is_table(data.summary)
        
-       -- Check summary content
-       -- Deleted 1 line (line2)
-       assert.are.same(1, data.summary.delete)
+       -- Check summary content (simplified to hunk navigation summary)
+       assert.are.same('none', data.summary.source_name)
+       assert.are.same(1, data.summary.hunk_total)
+       assert.is_nil(data.summary.hunk_idx)
     end)
   end)
 

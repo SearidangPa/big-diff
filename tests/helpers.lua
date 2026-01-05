@@ -1,17 +1,22 @@
 local M = {}
 
 M.setup_buffer = function(lines, ref_lines)
-  local buf_id = vim.api.nvim_create_buf(true, false)
+  local buf_id = vim.api.nvim_create_buf(false, true)
+
+  -- Ensure buffer behaves predictably in headless tests
+  vim.bo[buf_id].swapfile = false
+  vim.api.nvim_set_current_buf(buf_id)
+
   vim.api.nvim_buf_set_lines(buf_id, 0, -1, false, lines)
-  
+
   -- Set reference text manually to avoid git dependency in tests
   -- Use 'none' source to avoid git attachment failure on scratch buffer
   vim.b[buf_id].minidiff_config = { source = require('mini.diff').gen_source.none() }
 
-  require("mini.diff").set_ref_text(buf_id, ref_lines)
-  
+  require('mini.diff').set_ref_text(buf_id, ref_lines)
+
   M.wait_for_update(buf_id)
-  
+
   return buf_id
 end
 
@@ -20,9 +25,11 @@ M.wait_for_update = function(buf_id)
   local id = vim.api.nvim_create_autocmd('User', {
     pattern = 'MiniDiffUpdated',
     callback = function()
+      -- In tests we always set current buffer to `buf_id` before expecting updates
       if vim.api.nvim_get_current_buf() == buf_id then done = true end
     end,
   })
+
   vim.wait(1000, function() return done end)
   pcall(vim.api.nvim_del_autocmd, id)
 end
