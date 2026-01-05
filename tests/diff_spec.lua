@@ -33,6 +33,25 @@ describe('mini.diff', function()
       })
     end)
 
+    it('respects global ignore_whitespace toggle', function()
+      local buf_id = helpers.setup_buffer({ 'a  ' }, { 'a' })
+
+      -- Default: should detect whitespace-only change
+      helpers.expect_hunks(buf_id, {
+        { type = 'change', buf_start = 1, buf_count = 1, ref_start = 1, ref_count = 1 },
+      })
+
+      diff.set_ignore_whitespace(true)
+      helpers.wait_for_update(buf_id)
+      helpers.expect_hunks(buf_id, {})
+
+      diff.set_ignore_whitespace(false)
+      helpers.wait_for_update(buf_id)
+      helpers.expect_hunks(buf_id, {
+        { type = 'change', buf_start = 1, buf_count = 1, ref_start = 1, ref_count = 1 },
+      })
+    end)
+
     it('detects deleted lines', function()
       local buf_id = helpers.setup_buffer({ 'line1' }, { 'line1', 'line2' })
       helpers.expect_hunks(buf_id, {

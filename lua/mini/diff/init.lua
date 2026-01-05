@@ -216,6 +216,43 @@ MiniDiff.toggle_overlay = function()
   end
 end
 
+-- Options helpers ------------------------------------------------------------
+
+-- Toggle ignoring whitespace globally for all enabled buffers.
+--
+-- This changes `MiniDiff.config.options.ignore_whitespace` and refreshes config
+-- cache for all enabled buffers.
+MiniDiff.toggle_ignore_whitespace = function()
+  return MiniDiff.set_ignore_whitespace(not MiniDiff.get_ignore_whitespace())
+end
+
+-- Set ignoring whitespace globally. Returns the new value.
+MiniDiff.set_ignore_whitespace = function(value)
+  if type(value) ~= 'boolean' then return H.val.error('`value` should be boolean.') end
+
+  MiniDiff.config.options.ignore_whitespace = value
+
+  -- Refresh buffer caches (to pick up new global config) and recompute diffs
+  for buf_id, buf_cache in pairs(H.state.cache) do
+    if vim.api.nvim_buf_is_valid(buf_id) then
+      local buf_config = H.config.get_config({}, buf_id)
+      buf_cache.config = buf_config
+      buf_cache.extmark_opts = H.viz.convert_view_to_extmark_opts(buf_config.view)
+      buf_cache.source = H.config.normalize_source(buf_config.source or { H.sources.gen_source.git() })
+
+      H.viz.clear_all_diff(buf_id)
+      MiniDiff.schedule_diff_update(buf_id, 0)
+    end
+  end
+
+  return value
+end
+
+-- Get current global ignore whitespace setting.
+MiniDiff.get_ignore_whitespace = function()
+  return MiniDiff.config.options.ignore_whitespace == true
+end
+
 -- Float window helpers -------------------------------------------------------
 local create_float_buf = function()
   if H.state.float_buf and vim.api.nvim_buf_is_valid(H.state.float_buf) then return H.state.float_buf end
