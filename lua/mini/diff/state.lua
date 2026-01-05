@@ -8,6 +8,15 @@ M.timer_float_update = nil
 M.float_win = nil
 M.float_buf = nil
 
+-- Whether float is enabled (global toggle)
+M.float_enabled = false
+
+-- Last buffer for which float was rendered
+M.float_buf_id = nil
+
+-- Autocommand group id for float updates
+M.float_augroup = nil
+
 -- Namespaces per highlighter name
 M.ns_id = {
   viz = vim.api.nvim_create_namespace('MiniDiffViz'),

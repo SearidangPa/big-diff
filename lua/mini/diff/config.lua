@@ -58,8 +58,8 @@ M.default_config = {
     goto_next = ']h',
     goto_last = ']H',
 
-    -- Toggle floating window display for hunk navigation
-    toggle_float = '<leader>th',
+    -- Toggle hunk navigation float
+    toggle_float = '',
   },
 
   -- Various options
