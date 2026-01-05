@@ -392,7 +392,12 @@ M.update_hunk_data = function(diff, buf_cache, buf_lines)
   end
 
   buf_cache.hunks, buf_cache.viz_lines, buf_cache.overlay_lines = hunks, viz_lines, overlay_lines
-  buf_cache.summary = { hunk_total = n_ranges, hunk_idx = nil, source_name = (buf_cache.source[buf_cache.source_id] or {}).name }
+  buf_cache.summary = {
+    hunk_total = n_ranges,
+    hunk_idx = nil,
+    source_name = (buf_cache.source[buf_cache.source_id] or {})
+        .name
+  }
 end
 
 M.clear_all_diff = function(buf_id)
@@ -530,7 +535,7 @@ M.create_default_hl = function()
   hi('MiniDiffFloatAdd', { link = has_core_diff_hl and 'Added' or 'diffAdded' })
   hi('MiniDiffFloatChange', { fg = '#F6C178' })
   hi('MiniDiffFloatDelete', { fg = '#E99B97' })
-  hi('MiniDiffFloatCursor', { link = 'CurSearch' })
+  hi('MiniDiffFloatCursor', { bg = '#EFC6C4' })
   hi('MiniDiffFloatNormal', { link = 'NormalFloat' })
 end
 

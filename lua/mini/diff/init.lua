@@ -359,18 +359,16 @@ local update_float_content = function(buf_id)
 
       local hunk_type = get_hunk_type_for_range(buf_cache.hunks, range)
       local is_current = cursor_pos.type == 'on' and cursor_pos.idx == i
-      local prefix = is_current and '>' or ' '
+      local prefix = ' '
       local line = string.format('%s %s', prefix, hunk_type)
       table.insert(lines, line)
 
       local line_idx = #lines - 1
-      -- Highlight prefix
+      -- Highlight current hunk line background
       if is_current then
         table.insert(highlights, {
           line = line_idx,
-          col_start = 0,
-          col_end = 1,
-          hl = 'MiniDiffFloatCursor',
+          line_hl = 'MiniDiffFloatCursor',
         })
       end
 
@@ -399,12 +397,15 @@ local update_float_content = function(buf_id)
   local ns = H.state.ns_id.float
   vim.api.nvim_buf_clear_namespace(H.state.float_buf, ns, 0, -1)
   for _, hl in ipairs(highlights) do
-    vim.api.nvim_buf_set_extmark(H.state.float_buf, ns, hl.line, hl.col_start, {
-      end_col = hl.col_end,
-      hl_group = hl.hl,
-      priority = 100,
-      strict = false,
-    })
+    local extmark_opts = { strict = false }
+    if hl.line_hl then
+      extmark_opts.line_hl_group = hl.line_hl
+    else
+      extmark_opts.end_col = hl.col_end
+      extmark_opts.hl_group = hl.hl
+      extmark_opts.priority = 100
+    end
+    vim.api.nvim_buf_set_extmark(H.state.float_buf, ns, hl.line, hl.col_start or 0, extmark_opts)
   end
 
   -- Update window size
