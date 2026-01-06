@@ -537,7 +537,7 @@ Examples: >lua
 <
 ------------------------------------------------------------------------------
                                                      *MiniDiff.gen_source.git()*
-                          `MiniDiff.gen_source.git`()
+                          `MiniDiff.gen_source.git`({opts})
 Git source
 
 Default source. Uses file text from Git index as reference. This results in:
@@ -545,10 +545,19 @@ Default source. Uses file text from Git index as reference. This results in:
 - "Change" hunks represent modified text already present in index.
 - "Delete" hunks represent text deleted from index.
 
+If `opts.ref` is supplied, uses content of that git reference (like "HEAD",
+"HEAD~1", "main", etc.) instead of index.
+
 Applying hunks means staging, a.k.a adding to index.
 Notes:
 - Requires Git version at least 2.38.0.
 - There is no capability for unstaging hunks. Use full Git client for that.
+
+Parameters ~
+{opts} `(table|nil)` Options. Possible fields:
+  - <ref> `(string|function)` - Git reference to compare against. If string, used
+    as argument to `git show`. If function, it is called to get the string.
+    Default: `nil`, which means compare against Git index.
 
 Return ~
 `(table)` Source. See |MiniDiff-source-specification|.

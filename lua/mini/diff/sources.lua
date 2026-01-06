@@ -20,7 +20,40 @@ local git_invalidate_cache = function(cache)
   if cache == nil then return end
   pcall(vim.loop.fs_event_stop, cache.fs_event)
   pcall(vim.loop.timer_stop, cache.timer)
+  if cache.augroup ~= nil then pcall(vim.api.nvim_del_augroup_by_id, cache.augroup) end
 end
+
+local git_set_ref_text_custom = vim.schedule_wrap(function(buf_id, ref)
+  if not vim.api.nvim_buf_is_valid(buf_id) then return end
+  local buf_set_ref_text = vim.schedule_wrap(function(text) pcall(_G.MiniDiff.set_ref_text, buf_id, text) end)
+
+  -- Resolve ref if it is a function
+  if vim.is_callable(ref) then ref = ref() end
+  if type(ref) ~= 'string' then return buf_set_ref_text({}) end
+
+  -- NOTE: Do not cache buffer's name to react to its possible rename
+  local path = H.vim.get_buf_realpath(buf_id)
+  if path == '' then return buf_set_ref_text({}) end
+  local cwd, basename = vim.fn.fnamemodify(path, ':h'), vim.fn.fnamemodify(path, ':t')
+
+  -- Set
+  local stdout = vim.loop.new_pipe()
+  local spawn_opts = { args = { 'show', ref .. ':./' .. basename }, cwd = cwd, stdio = { nil, stdout, nil } }
+
+  local process, stdout_feed = nil, {}
+  local on_exit = function(exit_code)
+    process:close()
+
+    if exit_code ~= 0 or stdout_feed[1] == nil then return buf_set_ref_text({}) end
+
+    -- Set reference text accounting for possible 'crlf' end of line in index
+    local text = table.concat(stdout_feed, ''):gsub('\r\n', '\n')
+    buf_set_ref_text(text)
+  end
+
+  process = vim.loop.spawn('git', spawn_opts, on_exit)
+  git_read_stream(stdout, stdout_feed)
+end)
 
 local git_set_ref_text = vim.schedule_wrap(function(buf_id)
   if not vim.api.nvim_buf_is_valid(buf_id) then return end
@@ -56,6 +89,26 @@ local git_set_ref_text = vim.schedule_wrap(function(buf_id)
   process = vim.loop.spawn('git', spawn_opts, on_exit)
   git_read_stream(stdout, stdout_feed)
 end)
+
+local git_setup_ref_watch = function(buf_id, ref)
+  local augroup = vim.api.nvim_create_augroup('MiniDiffSourceGitRefBuffer' .. buf_id, { clear = true })
+  local update = function() git_set_ref_text_custom(buf_id, ref) end
+
+  local au_opts = { group = augroup, buffer = buf_id, callback = update, desc = 'Update MiniDiff reference from git ref' }
+  vim.api.nvim_create_autocmd({ 'BufReadPost', 'BufWritePost' }, au_opts)
+
+  vim.api.nvim_create_autocmd('User', {
+    group = augroup,
+    pattern = 'MiniDiffRefresh',
+    callback = function() if vim.api.nvim_buf_is_valid(buf_id) then update() end end,
+    desc = 'Update MiniDiff reference from git ref on MiniDiffRefresh',
+  })
+
+  git_invalidate_cache(H.state.git_cache[buf_id])
+  H.state.git_cache[buf_id] = { augroup = augroup }
+
+  update()
+end
 
 local git_setup_index_watch = function(buf_id, git_dir_path)
   local buf_fs_event, timer = vim.loop.new_fs_event(), vim.loop.new_timer()
@@ -183,7 +236,8 @@ local git_apply_patch = function(path_data, patch)
 end
 
 -- Sources --------------------------------------------------------------------
-M.gen_source.git = function()
+M.gen_source.git = function(opts)
+  opts = opts or {}
   local attach = function(buf_id)
     -- Try attaching to a buffer only once
     if H.state.git_cache[buf_id] ~= nil then return false end
@@ -192,7 +246,11 @@ M.gen_source.git = function()
     if path == '' then return false end
 
     H.state.git_cache[buf_id] = {}
-    git_start_watching_index(buf_id, path)
+    if opts.ref ~= nil then
+      git_setup_ref_watch(buf_id, opts.ref)
+    else
+      git_start_watching_index(buf_id, path)
+    end
   end
 
   local detach = function(buf_id)
