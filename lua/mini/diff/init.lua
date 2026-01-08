@@ -467,6 +467,7 @@ local schedule_float_update = function(buf_id)
     H.state.timer_float_update = timer
   end
 
+  assert(timer ~= nil, 'Failed to create timer for float updates')
   timer:stop()
   timer:start(throttle_ms, 0, function()
     -- Timer callback runs off the main loop; schedule Neovim API usage.
