@@ -451,20 +451,27 @@ end
 
 local schedule_float_update = function(buf_id)
   local buf_cache = H.state.cache[buf_id]
-
   local throttle_ms = (buf_cache and buf_cache.config or MiniDiff.config).view.float.throttle_ms
 
-  if H.state.timer_float_update then
-    H.state.timer_float_update:stop()
-    H.state.timer_float_update:close()
+  -- Use a persistent libuv timer and restart it on every CursorMoved.
+  -- Creating/closing timers on every cursor move can make `j`/`k` feel slow.
+  local timer = H.state.timer_float_update
+  if timer == nil then
+    -- Use `vim.uv` if available (Neovim>=0.10), fallback to `vim.loop`.
+    local uv = vim.uv or vim.loop
+    timer = uv.new_timer()
+    H.state.timer_float_update = timer
   end
 
-  H.state.timer_float_update = vim.defer_fn(function()
-    if vim.api.nvim_get_current_buf() == buf_id then
-      update_float_content(buf_id)
-    end
-    H.state.timer_float_update = nil
-  end, throttle_ms)
+  timer:stop()
+  timer:start(throttle_ms, 0, function()
+    -- Timer callback runs off the main loop; schedule Neovim API usage.
+    vim.schedule(function()
+      if vim.api.nvim_get_current_buf() == buf_id then
+        update_float_content(buf_id)
+      end
+    end)
+  end)
 end
 
 local teardown_float_autocmds = function()
