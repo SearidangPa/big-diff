@@ -14,6 +14,10 @@ M.float_enabled = false
 -- Last buffer for which float was rendered
 M.float_buf_id = nil
 
+-- Last computed "cursor position" bucket for float per buffer
+-- (Used to avoid updating float on every cursor move.)
+M.float_cursor_bucket = {}
+
 -- Autocommand group id for float updates
 M.float_augroup = nil
 

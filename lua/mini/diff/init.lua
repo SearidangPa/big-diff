@@ -304,27 +304,30 @@ end
 local get_cursor_hunk_position = function(ranges, cursor_line)
   if #ranges == 0 then return { type = 'no_hunks' } end
 
-  -- Check if cursor is before all hunks
-  if cursor_line < ranges[1].from then
-    return { type = 'before_all' }
-  end
+  if cursor_line < ranges[1].from then return { type = 'before_all' } end
+  if cursor_line > ranges[#ranges].to then return { type = 'after_all' } end
 
-  -- Check if cursor is after all hunks
-  if cursor_line > ranges[#ranges].to then
-    return { type = 'after_all' }
-  end
-
-  -- Check if cursor is on a hunk or between hunks
+  -- Find closest (contiguous) hunk range relative to cursor.
+  -- Linear scan is enough because number of hunks is typically small.
   for i, range in ipairs(ranges) do
     if cursor_line >= range.from and cursor_line <= range.to then
       return { type = 'on', idx = i }
     end
-    if i < #ranges and cursor_line > range.to and cursor_line < ranges[i + 1].from then
+
+    local next_range = ranges[i + 1]
+    if next_range and cursor_line > range.to and cursor_line < next_range.from then
       return { type = 'between', before = i, after = i + 1 }
     end
   end
 
   return { type = 'after_all' }
+end
+
+local get_cursor_hunk_bucket = function(ranges, cursor_line)
+  local pos = get_cursor_hunk_position(ranges, cursor_line)
+  if pos.type == 'on' then return string.format('on:%d', pos.idx) end
+  if pos.type == 'between' then return string.format('between:%d', pos.before) end
+  return pos.type
 end
 
 local get_hunk_type_for_range = function(hunks, range)
@@ -357,6 +360,7 @@ local update_float_content = function(buf_id)
   local ranges = H.hunk.get_contiguous_hunk_ranges(buf_cache.hunks)
   local cursor_line = vim.fn.line('.')
   local cursor_pos = get_cursor_hunk_position(ranges, cursor_line)
+  H.state.float_cursor_bucket[buf_id] = get_cursor_hunk_bucket(ranges, cursor_line)
 
   local lines = {}
   local highlights = {}
@@ -485,6 +489,8 @@ local teardown_float_autocmds = function()
     H.state.timer_float_update:close()
     H.state.timer_float_update = nil
   end
+
+  H.state.float_cursor_bucket = {}
 end
 
 local setup_float_autocmds = function()
@@ -513,8 +519,19 @@ local setup_float_autocmds = function()
     group = H.state.float_augroup,
     callback = function()
       if not H.state.float_enabled then return end
+
       local buf_id = vim.api.nvim_get_current_buf()
       H.state.float_buf_id = buf_id
+
+      local buf_cache = H.state.cache[buf_id]
+      if buf_cache == nil then return end
+
+      local ranges = H.hunk.get_contiguous_hunk_ranges(buf_cache.hunks)
+      local cursor_line = vim.fn.line('.')
+      local bucket = get_cursor_hunk_bucket(ranges, cursor_line)
+      if H.state.float_cursor_bucket[buf_id] == bucket then return end
+
+      H.state.float_cursor_bucket[buf_id] = bucket
       schedule_float_update(buf_id)
     end,
     desc = 'Update diff float on cursor move',
@@ -649,6 +666,7 @@ MiniDiff.update_buf_diff = vim.schedule_wrap(function(buf_id)
     local summary = { source_name = active_source.name, hunk_total = 0, hunk_idx = nil }
     buf_cache.hunks, buf_cache.viz_lines, buf_cache.overlay_lines, buf_cache.summary = {}, {}, {}, summary
     vim.b[buf_id].minidiff_summary = summary
+    H.state.float_cursor_bucket[buf_id] = nil
     return
   end
 
@@ -664,6 +682,9 @@ MiniDiff.update_buf_diff = vim.schedule_wrap(function(buf_id)
 
   -- Recompute hunks with summary and draw information
   H.viz.update_hunk_data(diff, buf_cache, buf_lines)
+
+  -- Ensure float is refreshed on next CursorMoved after diff update
+  H.state.float_cursor_bucket[buf_id] = nil
 
   -- Set buffer-local variables with summary for easier external usage
   vim.b[buf_id].minidiff_summary = buf_cache.summary
