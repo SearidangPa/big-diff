@@ -254,6 +254,20 @@ MiniDiff.get_ignore_whitespace = function()
 end
 
 -- Float window helpers -------------------------------------------------------
+local should_show_float = function(buf_id)
+  -- Hide float in non-editing UI buffers
+  -- - quickfix/location-list windows
+  -- - prompt buffers (Telescope/Snacks/etc.)
+  -- - Snacks picker windows
+  local bt = vim.bo[buf_id].buftype
+  if bt == 'quickfix' or bt == 'prompt' then return false end
+
+  local ft = vim.bo[buf_id].filetype
+  if ft == 'snacks_picker_list' or ft == 'snacks_picker_input' then return false end
+
+  return true
+end
+
 local create_float_buf = function()
   if H.state.float_buf and vim.api.nvim_buf_is_valid(H.state.float_buf) then return H.state.float_buf end
 
@@ -503,6 +517,8 @@ local setup_float_autocmds = function()
     if not H.state.float_enabled then return end
 
     local buf_id = vim.api.nvim_get_current_buf()
+    if not should_show_float(buf_id) then return MiniDiff.close_float() end
+
     H.state.float_buf_id = buf_id
 
     create_float_win(buf_id)
@@ -522,6 +538,8 @@ local setup_float_autocmds = function()
       if not H.state.float_enabled then return end
 
       local buf_id = vim.api.nvim_get_current_buf()
+      if not should_show_float(buf_id) then return end
+
       H.state.float_buf_id = buf_id
 
       local buf_cache = H.state.cache[buf_id]
