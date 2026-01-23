@@ -292,7 +292,7 @@ M.fold_between_hunks = function(buf_id, opts)
   if buf_cache == nil then H.log.error(string.format('Buffer %d is not enabled.', buf_id)) end
 
   -- Default context: 3 lines around each hunk
-  local default_opts = { context = 3 }
+  local default_opts = { context = 2 }
   opts = vim.tbl_deep_extend('force', default_opts, opts or {})
   local context = opts.context
 
