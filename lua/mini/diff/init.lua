@@ -45,6 +45,12 @@ MiniDiff.setup = function(config)
   H.vim.map('n', mappings.toggle_float, '<Cmd>lua MiniDiff.toggle_float()<CR>', { desc = 'Toggle diff float' })
   --stylua: ignore end
 
+  -- Create user commands
+  vim.api.nvim_create_user_command('FoldBetweenHunk', function(cmd_opts)
+    local context = cmd_opts.args ~= '' and tonumber(cmd_opts.args) or nil
+    MiniDiff.fold_between_hunks(0, context and { context = context } or nil)
+  end, { nargs = '?', desc = 'Fold unchanged regions between hunks' })
+
   -- Register decoration provider
   H.viz.set_decoration_provider(H.state.ns_id.viz, H.state.ns_id.overlay)
 
@@ -592,6 +598,7 @@ MiniDiff.operator = H.hunk.operator
 MiniDiff.textobject = H.hunk.textobject
 MiniDiff.goto_hunk = H.hunk.goto_hunk
 MiniDiff.do_hunks = H.hunk.do_hunks
+MiniDiff.fold_between_hunks = H.hunk.fold_between_hunks
 
 MiniDiff.get_buf_data = function(buf_id)
   buf_id = H.val.validate_buf_id(buf_id)

@@ -286,6 +286,49 @@ M.export = function(format, opts)
   H.log.error('`format` should be one of "qf".')
 end
 
+M.fold_between_hunks = function(buf_id, opts)
+  buf_id = H.val.validate_buf_id(buf_id)
+  local buf_cache = H.state.cache[buf_id]
+  if buf_cache == nil then H.log.error(string.format('Buffer %d is not enabled.', buf_id)) end
+
+  -- Default context: 3 lines around each hunk
+  local default_opts = { context = 3 }
+  opts = vim.tbl_deep_extend('force', default_opts, opts or {})
+  local context = opts.context
+
+  local ranges = get_contiguous_hunk_ranges(buf_cache.hunks)
+  if #ranges == 0 then return H.log.notify('No hunks to fold around', 'INFO') end
+
+  local line_count = vim.api.nvim_buf_line_count(buf_id)
+  local folds = {}
+
+  -- Fold from start of file to first hunk (minus context)
+  local first_fold_end = ranges[1].from - context - 1
+  if first_fold_end >= 1 then
+    table.insert(folds, { 1, first_fold_end })
+  end
+
+  -- Fold between consecutive hunks
+  for i = 1, #ranges - 1 do
+    local fold_start = ranges[i].to + context + 1
+    local fold_end = ranges[i + 1].from - context - 1
+    if fold_start <= fold_end then
+      table.insert(folds, { fold_start, fold_end })
+    end
+  end
+
+  -- Fold from last hunk (plus context) to end of file
+  local last_fold_start = ranges[#ranges].to + context + 1
+  if last_fold_start <= line_count then
+    table.insert(folds, { last_fold_start, line_count })
+  end
+
+  -- Create and close folds
+  for _, fold in ipairs(folds) do
+    vim.cmd(string.format('%d,%dfold', fold[1], fold[2]))
+  end
+end
+
 -- Export helper for float feature
 M.get_contiguous_hunk_ranges = get_contiguous_hunk_ranges
 
