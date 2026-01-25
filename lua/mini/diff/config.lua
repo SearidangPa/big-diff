@@ -17,7 +17,7 @@ M.default_config = {
     -- Float window settings for hunk navigation display
     float = {
       -- Width of the floating window
-      width = 9,
+      width = 16,
 
       -- Window blend (transparency, 0-100)
       winblend = 50,

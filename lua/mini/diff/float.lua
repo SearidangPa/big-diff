@@ -6,6 +6,9 @@ local H = {
 
 local M = {}
 
+local has_butterfly_ctx, butterfly_ctx = pcall(require, 'butterfly.utils_picker_context')
+local has_butterfly_truncate, butterfly_truncate = pcall(require, 'butterfly.util_truncate')
+
 -- Internal helpers ------------------------------------------------------------
 
 local should_show_float = function(buf_id)
@@ -41,7 +44,7 @@ local create_float_buf = function()
   return H.state.float_buf
 end
 
-local create_float_win = function(buf_id)
+local create_float_win = function(buf_id, height_override)
   local buf_cache = H.state.cache[buf_id]
 
   local float_config = (buf_cache and buf_cache.config or _G.MiniDiff.config).view.float
@@ -50,7 +53,7 @@ local create_float_win = function(buf_id)
   -- Calculate height based on hunks
   local hunks = buf_cache and buf_cache.hunks or {}
   local ranges = H.hunk.get_contiguous_hunk_ranges(hunks)
-  local height = math.max(#ranges + 1, 1) -- +1 for potential cursor line between hunks
+  local height = height_override or math.max(#ranges + 1, 1) -- +1 for potential cursor line between hunks
 
   local win_opts = {
     relative = 'editor',
@@ -125,6 +128,57 @@ local get_hunk_type_for_range = function(hunks, range)
   return 'add'
 end
 
+local get_scope_name = function(buf_id, line)
+  if not has_butterfly_ctx or type(butterfly_ctx.get_scope_at_line) ~= 'function' then return nil end
+  local path = vim.api.nvim_buf_get_name(buf_id)
+  if path == nil or path == '' then return nil end
+  local ok, scope = pcall(butterfly_ctx.get_scope_at_line, path, line, { check_ignored = true })
+  if not ok then return nil end
+  return scope and scope.name or nil
+end
+
+local truncate_label = function(label, max_len)
+  if type(label) ~= 'string' then return '' end
+  if type(max_len) ~= 'number' or max_len <= 0 then return label end
+  if not has_butterfly_truncate or type(butterfly_truncate.truncate_middle) ~= 'function' then
+    return label
+  end
+
+  local pattern = '[^%s_%-%+%.]+'
+  local joiner = '_'
+  local parts = {}
+  for p in label:gmatch(pattern) do
+    parts[#parts + 1] = p
+  end
+
+  local joiner_len = #joiner
+  local part_len
+  if #parts <= 1 then
+    part_len = max_len
+  elseif #parts == 2 then
+    part_len = math.floor((max_len - joiner_len) / 2)
+  elseif #parts == 3 then
+    part_len = math.floor((max_len - 2 * joiner_len) / 3)
+  else
+    part_len = math.floor((max_len - (2 * joiner_len + 1)) / 4)
+  end
+
+  if not part_len or part_len < 1 then part_len = 1 end
+
+  return butterfly_truncate.truncate_middle(label, {
+    part_len = part_len,
+    no_truncate_max = max_len,
+    joiner = joiner,
+    pattern = pattern,
+  })
+end
+
+local hunk_type_fallback_label = {
+  add = '+',
+  delete = '-',
+  change = '▲',
+}
+
 local update_float_content = function(buf_id)
   if not H.state.float_enabled then return end
   if not H.state.float_buf or not vim.api.nvim_buf_is_valid(H.state.float_buf) then return end
@@ -132,6 +186,8 @@ local update_float_content = function(buf_id)
   local buf_cache = H.state.cache[buf_id]
   if buf_cache == nil then return clear_float_content() end
 
+  local float_config = (buf_cache and buf_cache.config or _G.MiniDiff.config).view.float
+  local max_label_len = math.max(1, float_config.width - 2)
   local ranges = H.hunk.get_contiguous_hunk_ranges(buf_cache.hunks)
   local cursor_line = vim.fn.line('.')
   local cursor_pos = get_cursor_hunk_position(ranges, cursor_line)
@@ -143,19 +199,47 @@ local update_float_content = function(buf_id)
   if #ranges == 0 then
     table.insert(lines, ' No hunks')
   else
+    local entries = {}
+    local range_to_entry = {}
+    for i, range in ipairs(ranges) do
+      local scope_name = get_scope_name(buf_id, range.from)
+      local can_merge = type(scope_name) == 'string' and scope_name ~= ''
+      local entry = entries[#entries]
+      if can_merge and entry and entry.scope_name == scope_name then
+        entry.range_to = i
+      else
+        entry = {
+          scope_name = can_merge and scope_name or nil,
+          range_from = i,
+          range_to = i,
+          hunk_type = get_hunk_type_for_range(buf_cache.hunks, range),
+        }
+        table.insert(entries, entry)
+      end
+
+      range_to_entry[i] = #entries
+      if cursor_pos.type == 'on' and cursor_pos.idx == i then
+        entries[#entries].is_current = true
+      end
+    end
+
     -- Determine where to insert cursor indicator
     local cursor_line_idx = nil
     if cursor_pos.type == 'before_all' then
       cursor_line_idx = 0
     elseif cursor_pos.type == 'between' then
-      cursor_line_idx = cursor_pos.before
+      local before_entry = range_to_entry[cursor_pos.before]
+      local after_entry = range_to_entry[cursor_pos.after]
+      if before_entry and after_entry and before_entry ~= after_entry then
+        cursor_line_idx = before_entry
+      end
     elseif cursor_pos.type == 'after_all' then
-      cursor_line_idx = #ranges
+      cursor_line_idx = #entries
     end
 
     local show_in_between_cursor = function()
       -- Insert padded cursor indicator and highlight it
-      local cursor_text = '  ---'
+      local cursor_text = '---'
       table.insert(lines, cursor_text)
       table.insert(highlights, {
         line = #lines - 1,
@@ -165,25 +249,26 @@ local update_float_content = function(buf_id)
       })
     end
 
-    for i, range in ipairs(ranges) do
-      -- Insert cursor line before this hunk if needed
+    for i, entry in ipairs(entries) do
+      -- Insert cursor line before this entry if needed
       if cursor_line_idx and cursor_line_idx == i - 1 then
         show_in_between_cursor()
         cursor_line_idx = nil -- Mark as inserted
       end
 
-      local hunk_type = get_hunk_type_for_range(buf_cache.hunks, range)
-      local is_current = cursor_pos.type == 'on' and cursor_pos.idx == i
-      local prefix = ' '
-      local line = string.format('%s %s', prefix, hunk_type)
+      local hunk_type = entry.hunk_type
+      local fallback_label = hunk_type_fallback_label[hunk_type] or hunk_type
+      local label = entry.scope_name and truncate_label(entry.scope_name, max_label_len)
+        or truncate_label(fallback_label, max_label_len)
+      local line = label
       table.insert(lines, line)
 
       local line_idx = #lines - 1
       -- Highlight current hunk line background
-      if is_current then
+      if entry.is_current then
         table.insert(highlights, {
           line = line_idx,
-          col_start = 2,
+          col_start = 0,
           col_end = #line,
           hl = 'MiniDiffFloatCursorText',
         })
@@ -193,14 +278,14 @@ local update_float_content = function(buf_id)
       local hl_group = 'MiniDiffFloat' .. hunk_type:sub(1, 1):upper() .. hunk_type:sub(2)
       table.insert(highlights, {
         line = line_idx,
-        col_start = 2,
+        col_start = 0,
         col_end = #line,
         hl = hl_group,
       })
     end
 
     -- Insert cursor line after all hunks if needed
-    if cursor_line_idx and cursor_line_idx == #ranges then
+    if cursor_line_idx and cursor_line_idx == #entries then
       show_in_between_cursor()
     end
   end
@@ -226,7 +311,7 @@ local update_float_content = function(buf_id)
   end
 
   -- Update window size
-  create_float_win(buf_id)
+  create_float_win(buf_id, math.max(#lines, 1))
 end
 
 local schedule_float_update = function(buf_id)
