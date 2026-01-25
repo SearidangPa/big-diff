@@ -154,15 +154,14 @@ local update_float_content = function(buf_id)
     end
 
     local show_in_between_cursor = function()
-      -- insert 4 empty spaces so that we can insert the cursor symbol in the middle
-      -- also highlight it
-      local cursor_text = '   >'
+      -- Insert padded cursor indicator and highlight it
+      local cursor_text = '  ---'
       table.insert(lines, cursor_text)
       table.insert(highlights, {
         line = #lines - 1,
-        col_start = #cursor_text - 1,
+        col_start = #cursor_text - 3,
         col_end = #cursor_text,
-        hl = 'MiniDiffFloatCursor',
+        hl = 'MiniDiffFloatCursorText',
       })
     end
 
@@ -184,7 +183,9 @@ local update_float_content = function(buf_id)
       if is_current then
         table.insert(highlights, {
           line = line_idx,
-          line_hl = 'MiniDiffFloatCursor',
+          col_start = 2,
+          col_end = #line,
+          hl = 'MiniDiffFloatCursorText',
         })
       end
 

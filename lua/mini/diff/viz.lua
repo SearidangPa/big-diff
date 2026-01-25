@@ -535,7 +535,7 @@ M.create_default_hl = function()
   hi('MiniDiffFloatAdd', { link = has_core_diff_hl and 'Added' or 'diffAdded' })
   hi('MiniDiffFloatChange', { fg = '#F6C178' })
   hi('MiniDiffFloatDelete', { fg = '#E99B97' })
-  hi('MiniDiffFloatCursor', { bg = '#EFC6C4' })
+  hi('MiniDiffFloatCursorText', { bg = '#CFE6BB'})
   hi('MiniDiffFloatNormal', { link = 'NormalFloat' })
 end
 
