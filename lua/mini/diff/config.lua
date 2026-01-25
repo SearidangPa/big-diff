@@ -13,21 +13,6 @@ M.default_config = {
 
     -- Priority of used visualization extmarks
     priority = 199,
-
-    -- Float window settings for hunk navigation display
-    float = {
-      -- Width of the floating window
-      width = 16,
-
-      -- Window blend (transparency, 0-100)
-      winblend = 50,
-
-      -- Z-index of the floating window
-      zindex = 1,
-
-      -- Throttle delay (ms) for CursorMoved updates
-      throttle_ms = 100,
-    },
   },
 
   -- Source(s) for how reference text is computed/updated/etc
@@ -57,9 +42,6 @@ M.default_config = {
     goto_prev = '[h',
     goto_next = ']h',
     goto_last = ']H',
-
-    -- Toggle hunk navigation float
-    toggle_float = '',
   },
 
   -- Various options
@@ -92,11 +74,6 @@ M.setup_config = function(config)
   H.check_type('view.signs.change', config.view.signs.change, 'string')
   H.check_type('view.signs.delete', config.view.signs.delete, 'string')
   H.check_type('view.priority', config.view.priority, 'number')
-  H.check_type('view.float', config.view.float, 'table')
-  H.check_type('view.float.width', config.view.float.width, 'number')
-  H.check_type('view.float.winblend', config.view.float.winblend, 'number')
-  H.check_type('view.float.zindex', config.view.float.zindex, 'number')
-  H.check_type('view.float.throttle_ms', config.view.float.throttle_ms, 'number')
 
   H.check_type('source', config.source, 'table', true)
 
@@ -111,7 +88,6 @@ M.setup_config = function(config)
   H.check_type('mappings.goto_prev', config.mappings.goto_prev, 'string')
   H.check_type('mappings.goto_next', config.mappings.goto_next, 'string')
   H.check_type('mappings.goto_last', config.mappings.goto_last, 'string')
-  H.check_type('mappings.toggle_float', config.mappings.toggle_float, 'string')
 
   H.check_type('options', config.options, 'table')
   H.check_type('options.algorithm', config.options.algorithm, 'string')

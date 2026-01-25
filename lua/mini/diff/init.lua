@@ -7,7 +7,6 @@ local H = {
   sources = require('mini.diff.sources'),
   hunk = require('mini.diff.hunk'),
   viz = require('mini.diff.viz'),
-  float = require('mini.diff.float'),
 }
 
 local MiniDiff = {}
@@ -43,7 +42,6 @@ MiniDiff.setup = function(config)
   H.vim.map('o', mappings.goto_next, "V<Cmd>lua MiniDiff.goto_hunk('next')<CR>", { desc = 'Next hunk' })
   H.vim.map({ 'n', 'x' }, mappings.goto_last, "<Cmd>lua MiniDiff.goto_hunk('last')<CR>", { desc = 'Last hunk' })
   H.vim.map('o', mappings.goto_last, "V<Cmd>lua MiniDiff.goto_hunk('last')<CR>", { desc = 'Last hunk' })
-  H.vim.map('n', mappings.toggle_float, '<Cmd>lua MiniDiff.toggle_float()<CR>', { desc = 'Toggle diff float' })
   --stylua: ignore end
 
   -- Create user commands
@@ -172,8 +170,6 @@ MiniDiff.enable = function(buf_id)
   if attach_output == false then MiniDiff.fail_attach(buf_id) end
 end
 
-MiniDiff.close_float = H.float.close
-
 MiniDiff.disable = function(buf_id)
   buf_id = H.val.validate_buf_id(buf_id)
 
@@ -246,9 +242,6 @@ end
 MiniDiff.get_ignore_whitespace = function()
   return MiniDiff.config.options.ignore_whitespace == true
 end
-
-MiniDiff.open_float = H.float.open
-MiniDiff.toggle_float = H.float.toggle
 
 MiniDiff.export = H.hunk.export
 MiniDiff.gen_source = H.sources.gen_source
@@ -350,7 +343,6 @@ MiniDiff.update_buf_diff = vim.schedule_wrap(function(buf_id)
     local summary = { source_name = active_source.name, hunk_total = 0, hunk_idx = nil }
     buf_cache.hunks, buf_cache.viz_lines, buf_cache.overlay_lines, buf_cache.summary = {}, {}, {}, summary
     vim.b[buf_id].minidiff_summary = summary
-    H.state.float_cursor_bucket[buf_id] = nil
     return
   end
 
@@ -366,9 +358,6 @@ MiniDiff.update_buf_diff = vim.schedule_wrap(function(buf_id)
 
   -- Recompute hunks with summary and draw information
   H.viz.update_hunk_data(diff, buf_cache, buf_lines)
-
-  -- Ensure float is refreshed on next CursorMoved after diff update
-  H.state.float_cursor_bucket[buf_id] = nil
 
   -- Set buffer-local variables with summary for easier external usage
   vim.b[buf_id].minidiff_summary = buf_cache.summary

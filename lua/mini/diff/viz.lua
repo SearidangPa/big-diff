@@ -531,12 +531,6 @@ M.create_default_hl = function()
     hi_overlay('MiniDiffOverChangeBuf', { bg = '#CFE6BB' })
   end
 
-  -- Float highlight groups
-  hi('MiniDiffFloatAdd', { link = has_core_diff_hl and 'Added' or 'diffAdded' })
-  hi('MiniDiffFloatChange', { fg = '#F6C178' })
-  hi('MiniDiffFloatDelete', { fg = '#E99B97' })
-  hi('MiniDiffFloatCursorText', { bg = '#CFE6BB'})
-  hi('MiniDiffFloatNormal', { link = 'NormalFloat' })
 end
 
 M.clear_blended_hl_cache = function()
