@@ -1,4 +1,4 @@
-local H = require('mini.diff.utils_val')
+local H = require('big-diff.utils_val')
 local M = {}
 
 M.default_config = {

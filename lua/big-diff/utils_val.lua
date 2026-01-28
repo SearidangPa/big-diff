@@ -1,4 +1,4 @@
-local H = require('mini.diff.utils_log')
+local H = require('big-diff.utils_log')
 local M = {}
 
 M.validate_buf_id = function(x)

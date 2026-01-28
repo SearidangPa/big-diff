@@ -11,9 +11,9 @@ M.setup_buffer = function(lines, ref_lines)
 
   -- Set reference text manually to avoid git dependency in tests
   -- Use 'none' source to avoid git attachment failure on scratch buffer
-  vim.b[buf_id].minidiff_config = { source = require('mini.diff').gen_source.none() }
+  vim.b[buf_id].minidiff_config = { source = require('big-diff').gen_source.none() }
 
-  require('mini.diff').set_ref_text(buf_id, ref_lines)
+  require('big-diff').set_ref_text(buf_id, ref_lines)
 
   M.wait_for_update(buf_id)
 
@@ -35,7 +35,7 @@ M.wait_for_update = function(buf_id)
 end
 
 M.get_hunks = function(buf_id)
-  return require("mini.diff").get_buf_data(buf_id).hunks
+  return require("big-diff").get_buf_data(buf_id).hunks
 end
 
 M.expect_hunks = function(buf_id, expected)

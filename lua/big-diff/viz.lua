@@ -1,9 +1,9 @@
 local H = {
-  log = require('mini.diff.utils_log'),
-  vim = require('mini.diff.utils_vim'),
-  val = require('mini.diff.utils_val'),
-  text = require('mini.diff.utils_text'),
-  state = require('mini.diff.state'),
+  log = require('big-diff.utils_log'),
+  vim = require('big-diff.utils_vim'),
+  val = require('big-diff.utils_val'),
+  text = require('big-diff.utils_text'),
+  state = require('big-diff.state'),
 }
 
 local M = {}
@@ -418,7 +418,7 @@ M.on_resize = function()
       -- I'll assume init.lua binds a way to update or I'll export a function to be called by init.
       -- Actually, `on_resize` is called by an autocommand.
       -- `init.lua` sets up the autocommand.
-      -- `init.lua` can define the callback: `function() require('mini.diff.viz').on_resize(); require('mini.diff').schedule_diff_update(...) end`
+      -- `init.lua` can define the callback: `function() require('big-diff.viz').on_resize(); require('big-diff').schedule_diff_update(...) end`
       -- But on_resize logic is: clear diff, then schedule update.
       -- So `on_resize` in viz should probably just clear diffs and reset overlay_suffix.
       -- And init.lua should handle the schedule update.
