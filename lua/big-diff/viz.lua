@@ -1,10 +1,19 @@
-local H = {
-  log = require('big-diff.utils_log'),
-  vim = require('big-diff.utils_vim'),
-  val = require('big-diff.utils_val'),
-  text = require('big-diff.utils_text'),
-  state = require('big-diff.state'),
-}
+-- Lazy module loading: modules are loaded on first access
+local H = setmetatable({}, {
+  __index = function(t, k)
+    local map = {
+      log = 'big-diff.utils_log',
+      vim = 'big-diff.utils_vim',
+      val = 'big-diff.utils_val',
+      text = 'big-diff.utils_text',
+      state = 'big-diff.state',
+    }
+    if map[k] then
+      rawset(t, k, require(map[k]))
+      return t[k]
+    end
+  end,
+})
 
 local M = {}
 
@@ -16,14 +25,31 @@ local style_extmark_data = {
   number = { hl_group_prefix = 'MiniDiffSign', field = 'number_hl_group' },
 }
 
--- Suffix for overlay virtual lines to be highlighted as full line
-local overlay_suffix = string.rep(' ', vim.o.columns)
+-- Lazily computed constants to avoid vim.fn.has() calls at module load time
+local cached_overlay_suffix
+local cached_extmark_invalidate
+local cached_extmark_virt_lines_overflow
 
--- Flag for whether to invalidate extmarks
-local extmark_invalidate = vim.fn.has('nvim-0.10') == 1 and true or nil
+local get_overlay_suffix = function()
+  if cached_overlay_suffix == nil then
+    cached_overlay_suffix = string.rep(' ', vim.o.columns)
+  end
+  return cached_overlay_suffix
+end
 
--- Flag for whether to handle virtual lines overflow
-local extmark_virt_lines_overflow = vim.fn.has('nvim-0.11') == 1 and 'scroll' or nil
+local get_extmark_invalidate = function()
+  if cached_extmark_invalidate == nil then
+    cached_extmark_invalidate = vim.fn.has('nvim-0.10') == 1 and true or false
+  end
+  return cached_extmark_invalidate == true and true or nil
+end
+
+local get_extmark_virt_lines_overflow = function()
+  if cached_extmark_virt_lines_overflow == nil then
+    cached_extmark_virt_lines_overflow = vim.fn.has('nvim-0.11') == 1 and 'scroll' or false
+  end
+  return cached_extmark_virt_lines_overflow == 'scroll' and 'scroll' or nil
+end
 
 -- Treesitter helpers ---------------------------------------------------------
 -- Get treesitter highlights for a single reference line (from eager cache)
@@ -67,37 +93,46 @@ local get_blended_hl = function(syntax_hl, diff_type)
   return name
 end
 
--- Find treesitter highlight at a specific byte position
-local find_ts_hl_at_pos = function(ts_highlights, byte_pos)
-  if ts_highlights == nil then return nil end
+-- Build a byte-position-to-highlight map from treesitter highlights
+-- This avoids O(n^2) lookups by doing O(n) map construction once
+local build_pos_to_hl_map = function(ts_highlights, line_len)
+  if ts_highlights == nil or #ts_highlights == 0 then return nil end
+  local pos_to_hl = {}
   for _, hl in ipairs(ts_highlights) do
-    if byte_pos >= hl.start_col and byte_pos < hl.end_col then
-      return hl.hl_group
+    -- Byte positions in ts_highlights are 0-indexed, line_len is 1-indexed
+    local start_pos = hl.start_col + 1
+    local end_pos = math.min(hl.end_col, line_len)
+    for pos = start_pos, end_pos do
+      pos_to_hl[pos] = hl.hl_group
     end
   end
-  return nil
+  return pos_to_hl
 end
 
 -- Build a virtual line with treesitter syntax highlighting
 local build_ts_virt_line = function(buf_id, line_text, ref_line_num, diff_type)
   local ts_highlights = get_ts_highlights_for_line(buf_id, ref_line_num)
   local default_hl = 'MiniDiffOver' .. diff_type
+  local line_len = #line_text
 
   if not ts_highlights or #ts_highlights == 0 then
     return { { line_text, default_hl } }
   end
 
-  -- Build chunks by finding highlight at each position
+  -- Build position-to-highlight map once (O(n) instead of O(n^2))
+  local pos_to_hl = build_pos_to_hl_map(ts_highlights, line_len)
+
+  -- Build chunks by iterating through the line
   local chunks = {}
   local i = 1
-  while i <= #line_text do
-    local hl_group = find_ts_hl_at_pos(ts_highlights, i - 1)
+  while i <= line_len do
+    local hl_group = pos_to_hl[i]
     local blend_hl = hl_group and get_blended_hl(hl_group, diff_type) or default_hl
 
     -- Find extent of this highlight
     local j = i + 1
-    while j <= #line_text do
-      if find_ts_hl_at_pos(ts_highlights, j - 1) ~= hl_group then break end
+    while j <= line_len do
+      if pos_to_hl[j] ~= hl_group then break end
       j = j + 1
     end
 
@@ -128,9 +163,14 @@ end
 -- Build worddiff virtual line with treesitter highlighting
 local build_worddiff_virt_line_with_ts = function(buf_id, line, changed_parts, ref_line_num)
   local ts_highlights = get_ts_highlights_for_line(buf_id, ref_line_num)
+  local len = #line
+
+  -- If no treesitter highlights, build simple chunks
+  if ts_highlights == nil or #ts_highlights == 0 then
+    return build_worddiff_virt_line_simple(line, changed_parts)
+  end
 
   -- Mark each byte position with its diff type ('Change' or 'Context')
-  local len = #line
   local diff_types = {}
   for i = 1, len do
     diff_types[i] = 'Context'
@@ -142,13 +182,8 @@ local build_worddiff_virt_line_with_ts = function(buf_id, line, changed_parts, r
     end
   end
 
-  -- If no treesitter highlights, build simple chunks
-  if ts_highlights == nil or #ts_highlights == 0 then
-    return build_worddiff_virt_line_simple(line, changed_parts)
-  end
-
-  -- Sort ts_highlights by position
-  table.sort(ts_highlights, function(a, b) return a.start_col < b.start_col end)
+  -- Build position-to-highlight map once (O(n) instead of O(n^2))
+  local pos_to_hl = build_pos_to_hl_map(ts_highlights, len)
 
   -- Build chunks by iterating through the line
   local chunks = {}
@@ -156,13 +191,13 @@ local build_worddiff_virt_line_with_ts = function(buf_id, line, changed_parts, r
 
   while pos <= len do
     local current_diff = diff_types[pos]
-    local current_ts = find_ts_hl_at_pos(ts_highlights, pos - 1)
+    local current_ts = pos_to_hl and pos_to_hl[pos] or nil
     local segment_end = pos
 
     -- Find extent of current segment (same diff_type and syntax hl)
     while segment_end < len do
       local next_diff = diff_types[segment_end + 1]
-      local next_ts = find_ts_hl_at_pos(ts_highlights, segment_end)
+      local next_ts = pos_to_hl and pos_to_hl[segment_end + 1] or nil
       if next_diff ~= current_diff or next_ts ~= current_ts then break end
       segment_end = segment_end + 1
     end
@@ -206,17 +241,21 @@ end
 local draw_overlay_line_worddiff = function(buf_id, ns_id, row, data)
   local ref_line, buf_line, priority = data.ref_line, data.buf_line, data.priority
   local ref_line_num = data.ref_line_num
-  local ref_parts, buf_parts = compute_worddiff_changed_parts(ref_line, buf_line)
+  -- Use cached worddiff parts if available (pre-computed in append_overlay_change)
+  local ref_parts, buf_parts = data.ref_parts, data.buf_parts
+  if ref_parts == nil then
+    ref_parts, buf_parts = compute_worddiff_changed_parts(ref_line, buf_line)
+  end
 
   -- Show changes in reference as virtual line with treesitter + worddiff highlighting
   local virt_line = build_worddiff_virt_line_with_ts(buf_id, ref_line, ref_parts, ref_line_num)
-  table.insert(virt_line, { overlay_suffix, 'MiniDiffOverContext' })
+  table.insert(virt_line, { get_overlay_suffix(), 'MiniDiffOverContext' })
 
   --stylua: ignore
   local ref_opts = {
     virt_lines = { virt_line },
     virt_lines_above = true,
-    virt_lines_overflow = extmark_virt_lines_overflow,
+    virt_lines_overflow = get_extmark_virt_lines_overflow(),
     priority = priority,
   }
   H.vim.set_extmark(buf_id, ns_id, row, 0, ref_opts)
@@ -253,14 +292,14 @@ local draw_overlay_line = function(buf_id, ns_id, row, data)
     for _, line_data in ipairs(data.lines) do
       local chunks = build_ts_virt_line(buf_id, line_data.ref_line, line_data.ref_line_num, line_data.diff_type)
       -- Add suffix
-      table.insert(chunks, { overlay_suffix, 'MiniDiffOver' .. line_data.diff_type })
+      table.insert(chunks, { get_overlay_suffix(), 'MiniDiffOver' .. line_data.diff_type })
       table.insert(virt_lines, chunks)
     end
   end
 
   -- "Change"/"Delete" hunks show affected reference range as virtual lines
   opts.virt_lines, opts.virt_lines_above, opts.virt_lines_overflow =
-      virt_lines, data.show_above, extmark_virt_lines_overflow
+      virt_lines, data.show_above, get_extmark_virt_lines_overflow()
   H.vim.set_extmark(buf_id, ns_id, row, 0, opts)
 end
 
@@ -275,13 +314,17 @@ local append_overlay_change = function(overlay_lines, hunk, ref_lines, buf_lines
   if hunk.buf_count == hunk.ref_count then
     for i = 0, hunk.ref_count - 1 do
       local ref_n, buf_n = hunk.ref_start + i, hunk.buf_start + i
-      -- Defer actually computing word diff until in decoration provider as it
-      -- will compute only for displayed lines
+      local ref_line, buf_line = ref_lines[ref_n], buf_lines[buf_n]
+      -- Pre-compute worddiff here (during diff update) instead of during redraw
+      -- This avoids O(visible_lines * redraws) redundant diff computations
+      local ref_parts, buf_parts = compute_worddiff_changed_parts(ref_line, buf_line)
       local data = {
         type = 'change_worddiff',
-        ref_line = ref_lines[ref_n],
-        buf_line = buf_lines[buf_n],
+        ref_line = ref_line,
+        buf_line = buf_line,
         ref_line_num = ref_n,
+        ref_parts = ref_parts,
+        buf_parts = buf_parts,
         priority = priority,
       }
       append_overlay(overlay_lines, buf_n, data)
@@ -406,29 +449,8 @@ M.clear_all_diff = function(buf_id)
 end
 
 M.on_resize = function()
-  overlay_suffix = string.rep(' ', vim.o.columns)
-  for buf_id, _ in pairs(H.state.cache) do
-    if vim.api.nvim_buf_is_valid(buf_id) then
-      M.clear_all_diff(buf_id)
-      -- Use _G.MiniDiff.schedule_diff_update to avoid circular dependency if possible,
-      -- but this function is in init.lua.
-      -- However, on_resize calls schedule_diff_update.
-      -- I can pass it or rely on global.
-      -- The original code used H.schedule_diff_update.
-      -- I'll assume init.lua binds a way to update or I'll export a function to be called by init.
-      -- Actually, `on_resize` is called by an autocommand.
-      -- `init.lua` sets up the autocommand.
-      -- `init.lua` can define the callback: `function() require('big-diff.viz').on_resize(); require('big-diff').schedule_diff_update(...) end`
-      -- But on_resize logic is: clear diff, then schedule update.
-      -- So `on_resize` in viz should probably just clear diffs and reset overlay_suffix.
-      -- And init.lua should handle the schedule update.
-    end
-  end
-end
--- Redefine on_resize to just do what it can here, returning buf_ids to update?
--- Or just let init.lua handle the loop.
-M.update_overlay_suffix = function()
-  overlay_suffix = string.rep(' ', vim.o.columns)
+  -- Reset cached overlay suffix to recompute with new column count
+  cached_overlay_suffix = nil
 end
 
 M.convert_view_to_extmark_opts = function(view)
@@ -437,11 +459,12 @@ M.convert_view_to_extmark_opts = function(view)
 
   local signs = view.style == 'sign' and view.signs or {}
   local field, hl_group_prefix = extmark_data.field, extmark_data.hl_group_prefix
+  local invalidate = get_extmark_invalidate()
   --stylua: ignore
   return {
-    add = { [field] = hl_group_prefix .. 'Add', sign_text = signs.add, priority = view.priority, invalidate = extmark_invalidate },
-    change = { [field] = hl_group_prefix .. 'Change', sign_text = signs.change, priority = view.priority, invalidate = extmark_invalidate },
-    delete = { [field] = hl_group_prefix .. 'Delete', sign_text = signs.delete, priority = view.priority, invalidate = extmark_invalidate },
+    add = { [field] = hl_group_prefix .. 'Add', sign_text = signs.add, priority = view.priority, invalidate = invalidate },
+    change = { [field] = hl_group_prefix .. 'Change', sign_text = signs.change, priority = view.priority, invalidate = invalidate },
+    delete = { [field] = hl_group_prefix .. 'Delete', sign_text = signs.delete, priority = view.priority, invalidate = invalidate },
   }
 end
 

@@ -40,10 +40,23 @@ end
 
 M.clear_namespace = function(...) pcall(vim.api.nvim_buf_clear_namespace, ...) end
 
+-- Cache for is_buf_text results per buffer (avoids reading bytes on every BufEnter)
+local buf_is_text_cache = {}
+
 M.is_buf_text = function(buf_id)
+  if buf_is_text_cache[buf_id] ~= nil then
+    return buf_is_text_cache[buf_id]
+  end
   local n = vim.api.nvim_buf_call(buf_id, function() return vim.fn.byte2line(1024) end)
   local lines = vim.api.nvim_buf_get_lines(buf_id, 0, n, false)
-  return table.concat(lines, ''):find('\0') == nil
+  local result = table.concat(lines, ''):find('\0') == nil
+  buf_is_text_cache[buf_id] = result
+  return result
+end
+
+-- Invalidate is_buf_text cache for a buffer (call on buffer reload)
+M.invalidate_buf_text_cache = function(buf_id)
+  buf_is_text_cache[buf_id] = nil
 end
 
 M.get_buftext = function(buf_id)

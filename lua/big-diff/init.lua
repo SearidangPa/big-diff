@@ -1,13 +1,22 @@
-local H = {
-  log = require('big-diff.utils_log'),
-  val = require('big-diff.utils_val'),
-  vim = require('big-diff.utils_vim'),
-  state = require('big-diff.state'),
-  config = require('big-diff.config'),
-  sources = require('big-diff.sources'),
-  hunk = require('big-diff.hunk'),
-  viz = require('big-diff.viz'),
-}
+-- Lazy module loading: modules are loaded on first access
+local H = setmetatable({}, {
+  __index = function(t, k)
+    local map = {
+      log = 'big-diff.utils_log',
+      val = 'big-diff.utils_val',
+      vim = 'big-diff.utils_vim',
+      state = 'big-diff.state',
+      config = 'big-diff.config',
+      sources = 'big-diff.sources',
+      hunk = 'big-diff.hunk',
+      viz = 'big-diff.viz',
+    }
+    if map[k] then
+      rawset(t, k, require(map[k]))
+      return t[k]
+    end
+  end,
+})
 
 local MiniDiff = {}
 
@@ -73,9 +82,19 @@ MiniDiff.setup = function(config)
 
   au('VimResized', '*', function()
     H.viz.on_resize()
-    for buf_id, _ in pairs(H.state.cache) do
+    -- Only update visible buffers immediately; defer hidden buffers
+    local visible_bufs = {}
+    for _, win in ipairs(vim.api.nvim_list_wins()) do
+      visible_bufs[vim.api.nvim_win_get_buf(win)] = true
+    end
+    for buf_id, buf_cache in pairs(H.state.cache) do
       if vim.api.nvim_buf_is_valid(buf_id) then
-        MiniDiff.schedule_diff_update(buf_id, 0)
+        if visible_bufs[buf_id] then
+          MiniDiff.schedule_diff_update(buf_id, 0)
+        else
+          -- Mark hidden buffers to refresh when they become visible
+          buf_cache.needs_refresh_on_view = true
+        end
       end
     end
   end, 'Track Neovim resizing')
@@ -134,7 +153,10 @@ MiniDiff.enable = function(buf_id)
     end,
 
     -- Called when buffer content is changed outside of current session
-    on_reload = function() MiniDiff.schedule_diff_update(buf_id, 0) end,
+    on_reload = function()
+      H.vim.invalidate_buf_text_cache(buf_id)
+      MiniDiff.schedule_diff_update(buf_id, 0)
+    end,
 
     -- Called when buffer is unloaded from memory (`:h nvim_buf_detach_event`),
     -- **including** `:edit` command
@@ -145,7 +167,15 @@ MiniDiff.enable = function(buf_id)
   local augroup = vim.api.nvim_create_augroup('MiniDiffBuffer' .. buf_id, { clear = true })
   H.state.cache[buf_id].augroup = augroup
 
-  local buf_update = vim.schedule_wrap(function() update_buf_cache(buf_id) end)
+  local buf_update = vim.schedule_wrap(function()
+    update_buf_cache(buf_id)
+    -- Handle deferred refresh from VimResized when buffer becomes visible
+    local cache = H.state.cache[buf_id]
+    if cache and cache.needs_refresh_on_view then
+      cache.needs_refresh_on_view = nil
+      MiniDiff.schedule_diff_update(buf_id, 0)
+    end
+  end)
   local bufwinenter_opts = { group = augroup, buffer = buf_id, callback = buf_update, desc = 'Update buffer cache' }
   vim.api.nvim_create_autocmd('BufWinEnter', bufwinenter_opts)
 
@@ -200,7 +230,17 @@ MiniDiff.toggle_overlay = function()
   for buf_id, buf_cache in pairs(H.state.cache) do
     if vim.api.nvim_buf_is_valid(buf_id) then
       buf_cache.overlay = H.state.overlay
+      -- Build treesitter cache when overlay is turned on (lazy parsing)
+      if H.state.overlay and buf_cache.ref_text ~= nil and H.state.ts_cache[buf_id] == nil then
+        local lang = vim.bo[buf_id].filetype
+        if lang ~= '' then
+          local resolved_lang = vim.treesitter.language.get_lang(lang) or lang
+          H.state.ts_cache[buf_id] = H.viz.parse_ref_text_ts(buf_id, buf_cache.ref_text, resolved_lang)
+        end
+      end
       H.viz.clear_all_diff(buf_id)
+      -- Force diff recomputation by invalidating hash (overlay state changed)
+      buf_cache.buf_text_hash = nil
       MiniDiff.schedule_diff_update(buf_id, 0)
     end
   end
@@ -231,6 +271,8 @@ MiniDiff.set_ignore_whitespace = function(value)
       buf_cache.source = H.config.normalize_source(buf_config.source or { H.sources.gen_source.git() })
 
       H.viz.clear_all_diff(buf_id)
+      -- Force diff recomputation by invalidating hash (diff options changed)
+      buf_cache.buf_text_hash = nil
       MiniDiff.schedule_diff_update(buf_id, 0)
     end
   end
@@ -280,10 +322,10 @@ MiniDiff.set_ref_text = function(buf_id, text)
     vim.cmd('redraw')
   end
 
-  -- Invalidate and eagerly rebuild treesitter cache
+  -- Invalidate treesitter cache. Only rebuild if overlay is active.
   -- (Must be done here, not in decoration provider due to E565)
   H.state.ts_cache[buf_id] = nil
-  if text ~= nil then
+  if text ~= nil and H.state.overlay then
     local lang = vim.bo[buf_id].filetype
     if lang ~= '' then
       local resolved_lang = vim.treesitter.language.get_lang(lang) or lang
@@ -291,8 +333,9 @@ MiniDiff.set_ref_text = function(buf_id, text)
     end
   end
 
-  -- Immediately update diff
+  -- Immediately update diff (invalidate hash to force recomputation)
   H.state.cache[buf_id].ref_text = text
+  H.state.cache[buf_id].buf_text_hash = nil
   MiniDiff.schedule_diff_update(buf_id, 0)
 end
 
@@ -326,9 +369,19 @@ end)
 
 MiniDiff.schedule_diff_update = vim.schedule_wrap(function(buf_id, delay_ms)
   H.state.bufs_to_update[buf_id] = true
-  H.state.timer_diff_update:stop()
-  H.state.timer_diff_update:start(delay_ms, 0, process_scheduled_buffers)
+  local timer = H.state.get_timer_diff_update()
+  timer:stop()
+  timer:start(delay_ms, 0, process_scheduled_buffers)
 end)
+
+-- Simple hash function for buffer text (djb2 algorithm)
+local function hash_text(text)
+  local hash = 5381
+  for i = 1, #text do
+    hash = ((hash * 33) + string.byte(text, i)) % 0x100000000
+  end
+  return hash
+end
 
 MiniDiff.update_buf_diff = vim.schedule_wrap(function(buf_id)
   -- Make early returns
@@ -354,6 +407,14 @@ MiniDiff.update_buf_diff = vim.schedule_wrap(function(buf_id)
   H.state.vimdiff_opts.ignore_whitespace = options.ignore_whitespace
 
   local buf_text, buf_lines = H.vim.get_buftext(buf_id)
+
+  -- Skip diff computation if buffer text hasn't changed (hash-based check)
+  local new_hash = hash_text(buf_text)
+  if buf_cache.buf_text_hash == new_hash and not buf_cache.needs_clear then
+    return
+  end
+  buf_cache.buf_text_hash = new_hash
+
   local diff = vim.text.diff(buf_cache.ref_text, buf_text, H.state.vimdiff_opts)
 
   -- Recompute hunks with summary and draw information

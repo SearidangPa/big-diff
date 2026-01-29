@@ -1,7 +1,14 @@
 local M = {}
 
--- Timers
-M.timer_diff_update = vim.loop.new_timer()
+-- Lazy timer creation: timer is created on first use
+local timer_diff_update
+
+M.get_timer_diff_update = function()
+  if timer_diff_update == nil then
+    timer_diff_update = vim.loop.new_timer()
+  end
+  return timer_diff_update
+end
 
 -- Namespaces per highlighter name
 M.ns_id = {
