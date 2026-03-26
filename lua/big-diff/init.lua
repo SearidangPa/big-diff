@@ -31,6 +31,9 @@ local run_half_page_scroll = function(direction)
   vim.api.nvim_feedkeys(key, 'nx', false)
 end
 
+-- Overlay-aware half-page scroll fallback.
+-- If <C-d>/<C-u> does not move the cursor (often because topfill/filler lines
+-- are consuming the scroll in overlay/diff views), clear topfill and retry.
 local run_half_page_scroll_overlay_aware = function(direction)
   local before_line = vim.api.nvim_win_get_cursor(0)[1]
   run_half_page_scroll(direction)
