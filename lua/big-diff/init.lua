@@ -20,6 +20,89 @@ local H = setmetatable({}, {
 
 local MiniDiff = {}
 
+local overlay_scroll_mappings = {
+  down = { lhs = '<C-d>', desc = 'Half-page down (overlay aware)' },
+  up = { lhs = '<C-u>', desc = 'Half-page up (overlay aware)' },
+}
+
+local run_half_page_scroll = function(direction)
+  local key = direction == 'down' and '<C-d>' or '<C-u>'
+  key = vim.api.nvim_replace_termcodes(key, true, false, true)
+  vim.api.nvim_feedkeys(key, 'nx', false)
+end
+
+local run_half_page_scroll_overlay_aware = function(direction)
+  local before_line = vim.api.nvim_win_get_cursor(0)[1]
+  run_half_page_scroll(direction)
+  local after_line = vim.api.nvim_win_get_cursor(0)[1]
+
+  if after_line ~= before_line then return end
+
+  local view = vim.fn.winsaveview()
+  if (view.topfill or 0) <= 0 then return end
+
+  view.topfill = 0
+  vim.fn.winrestview(view)
+  run_half_page_scroll(direction)
+end
+
+local get_buf_local_map = function(buf_id, lhs)
+  if not vim.api.nvim_buf_is_valid(buf_id) then return false end
+
+  local ok, map = pcall(vim.api.nvim_buf_call, buf_id, function()
+    return vim.fn.maparg(lhs, 'n', false, true)
+  end)
+  if not ok or type(map) ~= 'table' or vim.tbl_isempty(map) or map.buffer ~= 1 then return false end
+
+  return map
+end
+
+local restore_buf_local_map = function(buf_id, lhs, map)
+  if type(map) ~= 'table' or vim.tbl_isempty(map) then return end
+
+  local opts = {
+    buffer = buf_id,
+    expr = map.expr == 1,
+    nowait = map.nowait == 1,
+    remap = map.noremap == 0,
+    silent = map.silent == 1,
+    replace_keycodes = map.replace_keycodes == 1,
+  }
+
+  if map.callback ~= nil then
+    vim.keymap.set('n', lhs, map.callback, opts)
+    return
+  end
+
+  if type(map.rhs) == 'string' then vim.keymap.set('n', lhs, map.rhs, opts) end
+end
+
+local apply_overlay_scroll_mappings = function(buf_id, buf_cache)
+  if not vim.api.nvim_buf_is_valid(buf_id) then return end
+
+  local saved_maps = buf_cache.saved_overlay_scroll_maps or {}
+  for direction, map_data in pairs(overlay_scroll_mappings) do
+    if saved_maps[direction] == nil then saved_maps[direction] = get_buf_local_map(buf_id, map_data.lhs) end
+
+    local dir = direction
+    vim.keymap.set('n', map_data.lhs, function() run_half_page_scroll_overlay_aware(dir) end,
+      { buffer = buf_id, desc = map_data.desc, silent = true })
+  end
+  buf_cache.saved_overlay_scroll_maps = saved_maps
+end
+
+local restore_overlay_scroll_mappings = function(buf_id, buf_cache)
+  local saved_maps = buf_cache.saved_overlay_scroll_maps
+  if type(saved_maps) ~= 'table' then return end
+
+  for direction, map_data in pairs(overlay_scroll_mappings) do
+    pcall(vim.keymap.del, 'n', map_data.lhs, { buffer = buf_id })
+    restore_buf_local_map(buf_id, map_data.lhs, saved_maps[direction])
+  end
+
+  buf_cache.saved_overlay_scroll_maps = nil
+end
+
 -- Public API -----------------------------------------------------------------
 MiniDiff.setup = function(config)
   -- Export module
@@ -142,6 +225,8 @@ MiniDiff.enable = function(buf_id)
   end
   update_buf_cache(buf_id)
 
+  if H.state.overlay then apply_overlay_scroll_mappings(buf_id, H.state.cache[buf_id]) end
+
   -- Add buffer watchers
   vim.api.nvim_buf_attach(buf_id, false, {
     -- Called on every text change (`:h nvim_buf_lines_event`)
@@ -207,6 +292,8 @@ MiniDiff.disable = function(buf_id)
   if buf_cache == nil then return end
 
 
+  restore_overlay_scroll_mappings(buf_id, buf_cache)
+
   H.state.cache[buf_id] = nil
   H.state.ts_cache[buf_id] = nil
 
@@ -230,6 +317,13 @@ MiniDiff.toggle_overlay = function()
   for buf_id, buf_cache in pairs(H.state.cache) do
     if vim.api.nvim_buf_is_valid(buf_id) then
       buf_cache.overlay = H.state.overlay
+
+      if H.state.overlay then
+        apply_overlay_scroll_mappings(buf_id, buf_cache)
+      else
+        restore_overlay_scroll_mappings(buf_id, buf_cache)
+      end
+
       -- Build treesitter cache when overlay is turned on (lazy parsing)
       if H.state.overlay and buf_cache.ref_text ~= nil and H.state.ts_cache[buf_id] == nil then
         local lang = vim.bo[buf_id].filetype

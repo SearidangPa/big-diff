@@ -2,6 +2,14 @@ local diff = require('mini.diff')
 local helpers = require('tests.helpers')
 
 describe('mini.diff API', function()
+  local get_local_nmap = function(buf_id, lhs)
+    return vim.api.nvim_buf_call(buf_id, function()
+      local map = vim.fn.maparg(lhs, 'n', false, true)
+      if type(map) ~= 'table' or vim.tbl_isempty(map) or map.buffer ~= 1 then return nil end
+      return map
+    end)
+  end
+
   before_each(function()
     diff.setup()
   end)
@@ -47,6 +55,51 @@ describe('mini.diff API', function()
       diff.toggle_overlay(buf_id)
       data = diff.get_buf_data(buf_id)
       assert.is_false(data.overlay)
+    end)
+
+    it('installs and removes local paging workaround maps on odd/even toggles', function()
+      local buf_id = helpers.setup_buffer({ 'a', 'b' }, { 'a' })
+
+      assert.is_nil(get_local_nmap(buf_id, '<C-d>'))
+      assert.is_nil(get_local_nmap(buf_id, '<C-u>'))
+
+      diff.toggle_overlay()
+      assert.is_not_nil(get_local_nmap(buf_id, '<C-d>'))
+      assert.is_not_nil(get_local_nmap(buf_id, '<C-u>'))
+
+      diff.toggle_overlay()
+      assert.is_nil(get_local_nmap(buf_id, '<C-d>'))
+      assert.is_nil(get_local_nmap(buf_id, '<C-u>'))
+
+      diff.toggle_overlay()
+      assert.is_not_nil(get_local_nmap(buf_id, '<C-d>'))
+      assert.is_not_nil(get_local_nmap(buf_id, '<C-u>'))
+
+      diff.toggle_overlay()
+      assert.is_nil(get_local_nmap(buf_id, '<C-d>'))
+      assert.is_nil(get_local_nmap(buf_id, '<C-u>'))
+    end)
+
+    it('restores existing local Ctrl-D and Ctrl-U mappings after toggle off', function()
+      local buf_id = helpers.setup_buffer({ 'a', 'b' }, { 'a' })
+
+      vim.keymap.set('n', '<C-d>', '<Cmd>echo "local-down"<CR>', { buffer = buf_id, silent = true })
+      vim.keymap.set('n', '<C-u>', '<Cmd>echo "local-up"<CR>', { buffer = buf_id, silent = true })
+
+      local before_down = get_local_nmap(buf_id, '<C-d>')
+      local before_up = get_local_nmap(buf_id, '<C-u>')
+
+      diff.toggle_overlay()
+      local during_down = get_local_nmap(buf_id, '<C-d>')
+      local during_up = get_local_nmap(buf_id, '<C-u>')
+      assert.is_not_nil(during_down.callback)
+      assert.is_not_nil(during_up.callback)
+
+      diff.toggle_overlay()
+      local after_down = get_local_nmap(buf_id, '<C-d>')
+      local after_up = get_local_nmap(buf_id, '<C-u>')
+      assert.are.same(before_down.rhs, after_down.rhs)
+      assert.are.same(before_up.rhs, after_up.rhs)
     end)
   end)
 
