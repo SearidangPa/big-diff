@@ -1,4 +1,21 @@
+local H = require('big-diff.utils_log')
 local M = {}
+
+local is_supported_utf8_encoding = function(fileencoding)
+  local encoding = string.lower(fileencoding or '')
+  return encoding == '' or encoding == 'utf-8' or encoding == 'utf8'
+end
+
+local is_string_utf8 = function(text)
+  local ok, converted = pcall(vim.fn.iconv, text, 'utf-8', 'utf-8')
+  if not ok or converted ~= text then return false end
+
+  local ok_index, char_count = pcall(vim.str_utfindex, text)
+  if not ok_index then return false end
+
+  local ok_byteindex, byte_index = pcall(vim.str_byteindex, text, char_count)
+  return ok_byteindex and byte_index == #text
+end
 
 -- BOM bytes prepended to buffer text if 'bomb' is enabled. See `:h bom-bytes`.
 --stylua: ignore
@@ -54,12 +71,53 @@ M.is_buf_text = function(buf_id)
   return result
 end
 
+M.is_buf_utf8 = function(buf_id)
+  return is_supported_utf8_encoding(vim.bo[buf_id].fileencoding)
+end
+
+M.is_buf_text_utf8 = function(buf_id)
+  return M.is_buf_text(buf_id) and M.is_buf_utf8(buf_id)
+end
+
+M.assert_buf_text_utf8 = function(buf_id)
+  if not M.is_buf_text(buf_id) then
+    H.error(string.format('Buffer %d is not a text buffer. big-diff only supports UTF-8 text buffers.', buf_id))
+  end
+
+  local fileencoding = vim.bo[buf_id].fileencoding
+  if M.is_buf_utf8(buf_id) then return end
+
+  H.error(string.format(
+    'Buffer %d uses unsupported fileencoding %s. big-diff only supports UTF-8 text buffers.',
+    buf_id,
+    vim.inspect(fileencoding)
+  ))
+end
+
+M.is_text_utf8 = function(text)
+  if type(text) ~= 'string' then return false end
+  if not is_string_utf8(text) then return false end
+
+  for _, line in ipairs(vim.split(text, '\n', { plain = true })) do
+    if not is_string_utf8(line) then return false end
+  end
+
+  return true
+end
+
+M.assert_text_utf8 = function(text, name)
+  if M.is_text_utf8(text) then return end
+  H.error(string.format('%s must be valid UTF-8 text.', name or 'Text'))
+end
+
 -- Invalidate is_buf_text cache for a buffer (call on buffer reload)
 M.invalidate_buf_text_cache = function(buf_id)
   buf_is_text_cache[buf_id] = nil
 end
 
 M.get_buftext = function(buf_id)
+  M.assert_buf_text_utf8(buf_id)
+
   local lines = vim.api.nvim_buf_get_lines(buf_id, 0, -1, false)
   -- - NOTE: Appending '\n' makes more intuitive diffs at end-of-file
   local text = table.concat(lines, '\n') .. '\n'

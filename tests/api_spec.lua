@@ -1,13 +1,27 @@
-local diff = require('mini.diff')
+local diff = require('big-diff')
 local helpers = require('tests.helpers')
+local text = require('big-diff.utils_text')
 
-describe('mini.diff API', function()
+describe('big-diff API', function()
   local get_local_nmap = function(buf_id, lhs)
     return vim.api.nvim_buf_call(buf_id, function()
       local map = vim.fn.maparg(lhs, 'n', false, true)
       if type(map) ~= 'table' or vim.tbl_isempty(map) or map.buffer ~= 1 then return nil end
       return map
     end)
+  end
+
+  local new_buffer = function(opts)
+    opts = opts or {}
+
+    local buf_id = vim.api.nvim_create_buf(opts.listed == true, opts.scratch ~= false)
+    vim.bo[buf_id].swapfile = false
+    vim.api.nvim_buf_set_lines(buf_id, 0, -1, false, opts.lines or {})
+
+    if opts.fileencoding ~= nil then vim.bo[buf_id].fileencoding = opts.fileencoding end
+    if opts.config ~= nil then vim.b[buf_id].minidiff_config = opts.config end
+
+    return buf_id
   end
 
   before_each(function()
@@ -136,6 +150,51 @@ describe('mini.diff API', function()
       
       local data = diff.get_buf_data(buf_id)
       assert.are.same('a\nb\n', data.ref_text)
+    end)
+
+    it('set_ref_text rejects invalid UTF-8 text', function()
+      local buf_id = new_buffer({ lines = { 'a' }, config = { source = diff.gen_source.none() } })
+
+      local ok, err = pcall(diff.set_ref_text, buf_id, string.char(0xe9))
+
+      assert.is_false(ok)
+      assert.matches('Reference text must be valid UTF%-8 text', err)
+      assert.is_nil(diff.get_buf_data(buf_id))
+    end)
+  end)
+
+  describe('UTF-8 support', function()
+    it('auto-enable skips non-UTF-8 buffers', function()
+      local buf_id = new_buffer({
+        listed = true,
+        scratch = false,
+        lines = { 'a' },
+        fileencoding = 'utf-16be',
+        config = { source = diff.gen_source.none() },
+      })
+
+      vim.api.nvim_set_current_buf(buf_id)
+      vim.api.nvim_exec_autocmds('BufEnter', { buffer = buf_id })
+      vim.wait(100, function() return diff.get_buf_data(buf_id) ~= nil end)
+
+      assert.is_nil(diff.get_buf_data(buf_id))
+    end)
+
+    it('enable rejects non-UTF-8 buffers', function()
+      local buf_id = new_buffer({ lines = { 'a' }, fileencoding = 'utf-16be' })
+
+      local ok, err = pcall(diff.enable, buf_id)
+
+      assert.is_false(ok)
+      assert.matches('only supports UTF%-8 text buffers', err)
+      assert.matches('utf%-16', err)
+    end)
+
+    it('slice_line rejects invalid UTF-8 text', function()
+      local ok, err = pcall(text.slice_line, string.char(0xe9))
+
+      assert.is_false(ok)
+      assert.matches('slice_line%(%) input must be valid UTF%-8 text', err)
     end)
   end)
   

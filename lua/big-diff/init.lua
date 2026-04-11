@@ -160,7 +160,7 @@ MiniDiff.setup = function(config)
     if H.state.cache[data.buf] ~= nil or H.config.is_disabled(data.buf) then return end
     local buf = data.buf
     if not (vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buftype == '' and vim.bo[buf].buflisted) then return end
-    if not H.vim.is_buf_text(buf) then return end
+    if not H.vim.is_buf_text_utf8(buf) then return end
     MiniDiff.enable(buf)
   end)
 
@@ -206,6 +206,7 @@ MiniDiff.enable = function(buf_id)
 
   -- Ensure buffer is loaded (to have up to date lines returned)
   H.vim.buf_ensure_loaded(buf_id)
+  H.vim.assert_buf_text_utf8(buf_id)
 
   -- Register enabled buffer with cached data for performance
   local update_buf_cache = function(b_id)
@@ -408,12 +409,16 @@ MiniDiff.set_ref_text = function(buf_id, text)
   if not (type(text) == 'table' or type(text) == 'string') then H.log.error('`text` should be either string or array.') end
   if type(text) == 'table' then text = #text > 0 and table.concat(text, '\n') or nil end
 
+  H.vim.assert_buf_text_utf8(buf_id)
+
+  -- Appending '\n' makes more intuitive diffs at end-of-file
+  if text ~= nil and string.sub(text, -1) ~= '\n' then text = text .. '\n' end
+  if text ~= nil then H.vim.assert_text_utf8(text, 'Reference text') end
+
   -- Enable if not already enabled
   if H.state.cache[buf_id] == nil then MiniDiff.enable(buf_id) end
   if H.state.cache[buf_id] == nil then H.log.error('Can not set reference text for not enabled buffer.') end
 
-  -- Appending '\n' makes more intuitive diffs at end-of-file
-  if text ~= nil and string.sub(text, -1) ~= '\n' then text = text .. '\n' end
   if text == nil then
     H.viz.clear_all_diff(buf_id)
     vim.cmd('redraw')

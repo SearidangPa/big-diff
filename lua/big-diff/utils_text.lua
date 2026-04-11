@@ -1,9 +1,12 @@
+local H = require('big-diff.utils_vim')
 local M = {}
 
 M.str_utfindex = function(s, i) return vim.str_utfindex(s, 'utf-32', i) end
 if vim.fn.has('nvim-0.11') == 0 then M.str_utfindex = function(s, i) return (vim.str_utfindex(s, i)) end end
 
 M.slice_line = function(line)
+  H.assert_text_utf8(line, 'slice_line() input')
+
   -- Intertwine every proper character with '\n'
   local line_len = line:len()
   local sliced, starts, ends

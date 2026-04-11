@@ -1,7 +1,7 @@
-local diff = require('mini.diff')
+local diff = require('big-diff')
 local helpers = require('tests.helpers')
 
-describe('mini.diff', function()
+describe('big-diff', function()
   before_each(function()
     diff.setup()
   end)
