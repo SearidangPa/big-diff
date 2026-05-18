@@ -1,4 +1,4 @@
-local H = require('big-diff.utils_log')
+local H = require('big-diff.nvim.utils_log')
 local M = {}
 
 local is_supported_utf8_encoding = function(fileencoding)
@@ -81,14 +81,14 @@ end
 
 M.assert_buf_text_utf8 = function(buf_id)
   if not M.is_buf_text(buf_id) then
-    H.error(string.format('Buffer %d is not a text buffer. big-diff only supports UTF-8 text buffers.', buf_id))
+    H.error(string.format('Buffer %d is not a text buffer. big-diff.nvim only supports UTF-8 text buffers.', buf_id))
   end
 
   local fileencoding = vim.bo[buf_id].fileencoding
   if M.is_buf_utf8(buf_id) then return end
 
   H.error(string.format(
-    'Buffer %d uses unsupported fileencoding %s. big-diff only supports UTF-8 text buffers.',
+    'Buffer %d uses unsupported fileencoding %s. big-diff.nvim only supports UTF-8 text buffers.',
     buf_id,
     vim.inspect(fileencoding)
   ))

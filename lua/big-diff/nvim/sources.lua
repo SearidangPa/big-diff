@@ -1,6 +1,6 @@
 local H = {
-  vim = require('big-diff.utils_vim'),
-  state = require('big-diff.state'),
+  vim = require('big-diff.nvim.utils_vim'),
+  state = require('big-diff.nvim.state'),
 }
 
 local M = {}

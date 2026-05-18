@@ -1,9 +1,9 @@
 local H = {
-  log = require('big-diff.utils_log'),
-  val = require('big-diff.utils_val'),
-  vim = require('big-diff.utils_vim'),
-  state = require('big-diff.state'),
-  config = require('big-diff.config'),
+  log = require('big-diff.nvim.utils_log'),
+  val = require('big-diff.nvim.utils_val'),
+  vim = require('big-diff.nvim.utils_vim'),
+  state = require('big-diff.nvim.state'),
+  config = require('big-diff.nvim.config'),
 }
 
 local M = {}

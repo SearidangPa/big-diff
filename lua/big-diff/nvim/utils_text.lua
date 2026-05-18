@@ -1,4 +1,4 @@
-local H = require('big-diff.utils_vim')
+local H = require('big-diff.nvim.utils_vim')
 local M = {}
 
 M.str_utfindex = function(s, i) return vim.str_utfindex(s, 'utf-32', i) end

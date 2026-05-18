@@ -1,7 +1,7 @@
-local diff = require('big-diff')
+local diff = require('big-diff.nvim')
 local helpers = require('tests.helpers')
 
-describe('big-diff', function()
+describe('big-diff.nvim', function()
   before_each(function()
     diff.setup()
   end)

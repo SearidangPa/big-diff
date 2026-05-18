@@ -2,11 +2,11 @@
 local H = setmetatable({}, {
   __index = function(t, k)
     local map = {
-      log = 'big-diff.utils_log',
-      vim = 'big-diff.utils_vim',
-      val = 'big-diff.utils_val',
-      text = 'big-diff.utils_text',
-      state = 'big-diff.state',
+      log = 'big-diff.nvim.utils_log',
+      vim = 'big-diff.nvim.utils_vim',
+      val = 'big-diff.nvim.utils_val',
+      text = 'big-diff.nvim.utils_text',
+      state = 'big-diff.nvim.state',
     }
     if map[k] then
       rawset(t, k, require(map[k]))

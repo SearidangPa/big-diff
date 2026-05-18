@@ -1,8 +1,8 @@
-local diff = require('big-diff')
+local diff = require('big-diff.nvim')
 local helpers = require('tests.helpers')
-local text = require('big-diff.utils_text')
+local text = require('big-diff.nvim.utils_text')
 
-describe('big-diff API', function()
+describe('big-diff.nvim API', function()
   local get_local_nmap = function(buf_id, lhs)
     return vim.api.nvim_buf_call(buf_id, function()
       local map = vim.fn.maparg(lhs, 'n', false, true)
